@@ -18,7 +18,7 @@ For example, to cluster groups on loadings and intercepts:
 Output<-mixmgfa(data,N_gs,nfactors=1,cluster.spec=c("loadings","intercepts"),nsclust=c(1,6),maxiter=5000,nruns=25,design=design)
 
 ```
-(where design = a matrix with as many rows as there are variables and as many columns as nfactors, containing zeros for zero loadings and ones for nonzero loadings.)
+(where design = a matrix with as many rows as there are variables and as many columns as nfactors, containing zeros for zero loadings and ones for nonzero loadings.) Please note that the package currently cannot deal with missing data.
 
 
 For selecting the number of clusters, inspect Output$overview and the plots obtained by:
