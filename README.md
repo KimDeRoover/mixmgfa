@@ -39,3 +39,6 @@ For printing a summary of the selected solution, use, for example:
 summary(Output$MMGFAsolutions,nclust=3)
 
 ```
+
+# Contribution
+This package is a work-in-progress, so please report bugs and check back for updates (including more rotation and scaling options and improvements of the multistart procedure).
