@@ -673,12 +673,13 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
             screeratios[convexhull[nclust]-nsclust[1]+1]=((LL_nclust-LL_nclustmin1)/(npar_nclust-npar_nclustmin1))/((LL_nclustplus1-LL_nclust)/(npar_nclustplus1-npar_nclust))
           } else {
             screeratios[convexhull[nclust]-nsclust[1]+1]=NA
-            change=1
-            convexhull=which(!is.na(screeratios))
-            nrhull=length(convexhull)
+            change=1            
           }
         }
       }
+      convexhull=which(!is.na(screeratios))
+      convexhull=c(overview[1,1],convexhull,overview[nrows,1])
+      nrhull=length(convexhull)
     }
     overview=cbind(overview[,1:5],screeratios,overview[,6:7])
     prefix=seq(nsclust[1]:nsclust[2])
