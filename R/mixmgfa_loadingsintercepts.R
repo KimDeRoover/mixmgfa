@@ -79,9 +79,9 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
       mean_g <- colMeans(X_g)
       mean_gs[g,] <- mean_g
       # X_gc <- sweep(X_g,2,mean_g,check.margin = FALSE)
-      CP_g <- (1/N_gs[g])*(t(X_g)%*%X_g)
+      CP_g <- (1/N_gs[g])*crossprod(X_g,X_g)
       CP_gs[[g]] <- CP_g
-      obsS_gs[[g]] <- CP_g-mean_g%*%t(mean_g) #(1/N_gs[g])*(t(X_gc)%*%X_gc)
+      obsS_gs[[g]] <- CP_g-tcrossprod(mean_g,mean_g) #(1/N_gs[g])*(t(X_gc)%*%X_gc)
     }
   } else { # input is list or concatenation of covariance matrices and mean vectors
     obsS_gs=data$covariances
@@ -106,7 +106,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
     CP_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
     for(g in 1:ngroup){
       mean_g <- mean_gs[g,]
-      CP_g <- obsS_gs[[g]]+mean_g%*%t(mean_g)
+      CP_g <- obsS_gs[[g]]+tcrossprod(mean_g,mean_g)
       CP_gs[[g]] <- CP_g
     }
   }
@@ -120,14 +120,14 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
 
 
   if(start==1){
-    if(nclust>1){
+    if(nclust>1 && nclust<ngroup){
       # pre-selection of random partitions
-      nrtrialstarts=nruns*round(100/preselect) # generate 'nruns'*(100/preselect) different random partitions
+      nrtrialstarts=min(nruns*round(100/preselect),stirlingnr2(ngroup,nclust)) # generate 'nruns'*(100/preselect) different random partitions
       randpartvecs=matrix(0,nrtrialstarts,ngroup);
       for (trialstart in 1:nrtrialstarts){
         aris=1;
-        iterrnd=0;
-        while (sum(aris==1)>0 && iterrnd<5){
+        #iterrnd=0;
+        while (sum(aris==1)>0){ # && iterrnd<5){
           cl=0;
           while(length(cl)<nclust){
             randpartvec <- sample(1:nclust,ngroup,replace=TRUE) # generate random partition
@@ -140,247 +140,251 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
               prevpartvec=randpartvecs[r,]
               aris[r]<-adjrandindex(prevpartvec,randpartvec)
             }
-            iterrnd=iterrnd+1;
+            #iterrnd=iterrnd+1;
           }
         }
         randpartvecs[trialstart,]=randpartvec
       }
-      ODLLs_trialstarts=rep(0,nrtrialstarts,1)
-      for (trialstart in 1:nrtrialstarts){ # select 'preselect'% (default 10%) best fitting random partitions
-        randpartvec=randpartvecs[trialstart,];
-        if(nclust>1){
-          z_gks=IM[randpartvec,]
-          pi_ks=(1/ngroup)*colSums(z_gks)
-        }
-        else {
-          z_gks=t(randpartvec)
-          pi_ks=1
-        }
-        N_gks=diag(N_gs[,1])%*%z_gks
-        N_ks=colSums(N_gks)
+      if (preselect<100){
+        ODLLs_trialstarts=rep(0,nrtrialstarts,1)
+        for (trialstart in 1:nrtrialstarts){ # select 'preselect'% (default 10%) best fitting random partitions
+          randpartvec=randpartvecs[trialstart,];
+          if(nclust>1){
+            z_gks=IM[randpartvec,]
+            pi_ks=(1/ngroup)*colSums(z_gks)
+          }
+          else {
+            z_gks=t(randpartvec)
+            pi_ks=1
+          }
+          N_gks=sweep(z_gks,N_gs,MARGIN=1,'*',check.margin = FALSE) #N_gks=diag(N_gs[,1])%*%z_gks
+          N_ks=colSums(N_gks)
 
-        # tau_ks <- matrix(0,nclust,nvar)
-        # for(k in 1:nclust){
-        #   Xsup_k=matrix(0,N_ks[k],nvar)
-        #   for(g in 1:ngroup){
-        #     if(randpartvec[g]==k){
-        #       X=Xsup[Ncum[g,1]:Ncum[g,2],]
-        #       Xsup_k[(sum(N_gks[1:g-1,k])+1):sum(N_gks[1:g,k]),]=X
-        #     }
-        #   }
-        #   tau_ks[k,] <- colMeans(Xsup_k)
-        # }
-        # # center data with initialized intercepts
-        # Xsupcent <- matrix(0,N,nvar)
-        # for(g in 1:ngroup){
-        #   k=randpartvec[g]
-        #   X_g <- Xsup[Ncum[g,1]:Ncum[g,2],]
-        #   Xsupcent[Ncum[g,1]:Ncum[g,2],]=sweep(X_g,2,tau_ks[k,],check.margin = FALSE)
-        # }
+          # tau_ks <- matrix(0,nclust,nvar)
+          # for(k in 1:nclust){
+          #   Xsup_k=matrix(0,N_ks[k],nvar)
+          #   for(g in 1:ngroup){
+          #     if(randpartvec[g]==k){
+          #       X=Xsup[Ncum[g,1]:Ncum[g,2],]
+          #       Xsup_k[(sum(N_gks[1:g-1,k])+1):sum(N_gks[1:g,k]),]=X
+          #     }
+          #   }
+          #   tau_ks[k,] <- colMeans(Xsup_k)
+          # }
+          # # center data with initialized intercepts
+          # Xsupcent <- matrix(0,N,nvar)
+          # for(g in 1:ngroup){
+          #   k=randpartvec[g]
+          #   X_g <- Xsup[Ncum[g,1]:Ncum[g,2],]
+          #   Xsupcent[Ncum[g,1]:Ncum[g,2],]=sweep(X_g,2,tau_ks[k,],check.margin = FALSE)
+          # }
 
-        tau_ks <- matrix(0,nclust,nvar)
-        for(k in 1:nclust){
-          for(g in 1:ngroup){
-            if(randpartvec[g]==k){
-              tau_ks[k,]=tau_ks[k,]+(N_gks[g,k]/N_ks[k])*mean_gs[g,]
+          tau_ks <- matrix(0,nclust,nvar)
+          for(k in 1:nclust){
+            for(g in 1:ngroup){
+              if(randpartvec[g]==k){
+                tau_ks[k,]=tau_ks[k,]+(N_gks[g,k]/N_ks[k])*mean_gs[g,]
+              }
             }
           }
-        }
 
-	      Lambda_ks <- matrix(list(NA),nrow = 1, ncol=nclust)
-        uniq_ks <- matrix(0,nclust,nvar)
-	      for(k in 1:nclust){
-          S_k=matrix(0,nvar,nvar)
-	        for(g in 1:ngroup){
-	          if(randpartvec[g]==k){
-	            mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-	            mu_gk=matrix(tau_ks[k,],nrow=1,ncol=nvar)
-	            S_gk=CP_gs[[g]]-t(mean_g)%*%mu_gk+t(mu_gk)%*%(mu_gk-mean_g)
-	            S_k=S_k+N_gs[g]*S_gk
-	          }
-	        }
-	        S_k=(1/N_ks[k])*S_k
-          ed<-eigen(S_k, symmetric=TRUE, only.values = FALSE)
-          val<-ed$values
-          u<-ed$vectors
-          totalerror=sum((val[-seq_len(nfactors)]))
-          meanerror=totalerror/(nvar-nfactors) # mean error variance: mean variance in discarded dimensions
-          Uniq=rep(meanerror,nvar)
-          lambda_k=u[,seq_len(nfactors),drop=FALSE] %*% sqrt(diag(val[seq_len(nfactors)]-Uniq[seq_len(nfactors)],nrow=nfactors,ncol=nfactors))
-          if (EFA==0){
-            lambda_k <- procr(lambda_k,design)
-            lambda_k=lambda_k*design # non-zero loadings should be indicated with '1' for this to work properly
+          Lambda_ks <- matrix(list(NA),nrow = 1, ncol=nclust)
+          uniq_ks <- matrix(0,nclust,nvar)
+          for(k in 1:nclust){
+            S_k=matrix(0,nvar,nvar)
+            for(g in 1:ngroup){
+              if(randpartvec[g]==k){
+                mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
+                mu_gk=matrix(tau_ks[k,],nrow=1,ncol=nvar)
+                S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
+                S_k=S_k+N_gs[g]*S_gk
+              }
+            }
+            S_k=(1/N_ks[k])*S_k
+            ed<-eigen(S_k, symmetric=TRUE, only.values = FALSE)
+            val<-ed$values
+            u<-ed$vectors
+            totalerror=sum((val[-seq_len(nfactors)]))
+            meanerror=totalerror/(nvar-nfactors) # mean error variance: mean variance in discarded dimensions
+            Uniq=rep(meanerror,nvar)
+            lambda_k=u[,seq_len(nfactors),drop=FALSE] %*% sqrt(diag(val[seq_len(nfactors)]-Uniq[seq_len(nfactors)],nrow=nfactors,ncol=nfactors))
+            if (EFA==0){
+              lambda_k <- procr(lambda_k,design)
+              lambda_k=lambda_k*design # non-zero loadings should be indicated with '1' for this to work properly
+            }
+            Lambda_ks[[k]]=lambda_k
+            uniq_ks[k,]=Uniq
           }
-          Lambda_ks[[k]]=lambda_k
-          uniq_ks[k,]=Uniq
-        }
 
 
 
-        Psi_gs <- matrix(list(NA), nrow = ngroup, ncol = 1) # initialize group-specific unique variances
-        Phi_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust) # initialize group- and cluster-specific factor covariances
-        alpha_gks <- matrix(list(NA), nrow=ngroup, ncol = nclust) # initialize group- and cluster-specific factor means
-        for(g in 1:ngroup){
-	        k=randpartvec[g]
-          Psi_gs[[g]]=diag(uniq_ks[k,])
-          if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){
-            X_g <- Xsup[Ncum[g,1]:Ncum[g,2],]
-          }
-          for(k2 in 1:nclust){
-	          Phi_gks[[g,k2]]=diag(nfactors)
-	          lambda_k=Lambda_ks[[k2]]
-	          if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){
-	            #X_c=X_g-(matrix(tau_ks[k2,],ncol=nvar,nrow=N_gs[g],byrow=TRUE))
-	            X_c=sweep(X_g,2,tau_ks[k2,],check.margin = FALSE)
-	            udv=svd(X_c%*%lambda_k)
-	            U=udv$u
-	            V=udv$v
-	            Fscores=U[,seq_len(nfactors),drop=FALSE]%*%t(V) # compute component scores as initial estimates of factor scores
-	            Fvar=apply(Fscores,2,var)
-	            Fscores=scale(Fscores,center=FALSE,scale=sqrt(Fvar))
-	            alpha_gks[[g,k2]] <- colMeans(Fscores)
-	          } else {
-	            tlambda_k=t(lambda_k)
-	            S_g=obsS_gs[[g]]
-	            tlambdak_Sg=tlambda_k%*%S_g
-	            alpha_gks[[g,k2]]=(mean_gs[g,]-tau_ks[k2,])%*%t(solve(((tlambdak_Sg)%*%lambda_k),(tlambdak_Sg)))
-	          }
-          }
-        }
-
-
-        Sigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
-        invSigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
-        for(k in 1:nclust){
-          lambda_k=Lambda_ks[[k]]
-          tlambda_k=t(lambda_k)
+          Psi_gs <- matrix(list(NA), nrow = ngroup, ncol = 1) # initialize group-specific unique variances
+          Phi_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust) # initialize group- and cluster-specific factor covariances
+          alpha_gks <- matrix(list(NA), nrow=ngroup, ncol = nclust) # initialize group- and cluster-specific factor means
           for(g in 1:ngroup){
-            psi_g=Psi_gs[[g]]
-            invPsi_g=diag(1/diag(psi_g))
-            phi_gk=Phi_gks[[g,k]]
-            invPhi_gk=phi_gk # phi_gk is still identity matrix
-            sigma_gk=lambda_k %*% phi_gk %*% tlambda_k + psi_g
-            Sigma_gks[[g,k]]=(sigma_gk+t(sigma_gk))*(1/2) # avoid asymmetry due to rounding errors
-            invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk+tlambda_k%*%invPsi_g%*%lambda_k)
-            invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk_tLambdainvPsi_g_Lambda+t(invPhi_gk_tLambdainvPsi_g_Lambda))*(1/2)
-            invSigma_gks[[g,k]]=invPsi_g-invPsi_g%*%lambda_k%*%solve(invPhi_gk_tLambdainvPsi_g_Lambda)%*%tlambda_k%*%invPsi_g; # Woodbury identity
+            k=randpartvec[g]
+            Psi_gs[[g]]=diag(uniq_ks[k,])
+            if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){
+              X_g <- Xsup[Ncum[g,1]:Ncum[g,2],]
+            }
+            for(k2 in 1:nclust){
+              Phi_gks[[g,k2]]=diag(nfactors)
+              lambda_k=Lambda_ks[[k2]]
+              if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){
+                #X_c=X_g-(matrix(tau_ks[k2,],ncol=nvar,nrow=N_gs[g],byrow=TRUE))
+                X_c=sweep(X_g,2,tau_ks[k2,],check.margin = FALSE)
+                udv=svd(X_c%*%lambda_k)
+                U=udv$u
+                V=udv$v
+                Fscores=U[,seq_len(nfactors),drop=FALSE]%*%t(V) # compute component scores as initial estimates of factor scores
+                Fvar=apply(Fscores,2,var)
+                Fscores=scale(Fscores,center=FALSE,scale=sqrt(Fvar))
+                alpha_gks[[g,k2]] <- colMeans(Fscores)
+              } else {
+                tlambda_k=t(lambda_k)
+                S_g=obsS_gs[[g]]
+                tlambdak_Sg=tlambda_k%*%S_g
+                alpha_gks[[g,k2]]=(mean_gs[g,]-tau_ks[k2,])%*%t(solve(((tlambdak_Sg)%*%lambda_k),(tlambdak_Sg)))
+              }
+            }
           }
-        }
 
-        # if (is.matrix(data)==FALSE & is.data.frame(data)==FALSE){
-        #   # cycle 1 update factor means (see De Roover, 2021)
-        #   for(g in 1:ngroup){
-        #     for(k in 1:nclust){
-        #       if(N_ks[k]>0){
-        #         lambda_k=Lambda_ks[[k]]
-        #         tlambda_k=t(lambda_k)
-        #         invSigma_gk=invSigma_gks[[g,k]]
-        #         alpha_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,])%*%t(solve(((tlambda_k%*%invSigma_gk)%*%lambda_k),(tlambda_k%*%invSigma_gk)))
-        #       }
-        #     }
-        #   }
-        # }
 
-        S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
-        S_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
-        alpha_tlambda_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
-        for(g in 1:ngroup){
-          S_g=matrix(0,nvar,nvar)
-          mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
+          Sigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+          invSigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
           for(k in 1:nclust){
             lambda_k=Lambda_ks[[k]]
             tlambda_k=t(lambda_k)
-            alpha_tlambda_gks[[g,k]]=alpha_gks[[g,k]]%*%tlambda_k
-            mu_gk=tau_ks[k,]+alpha_tlambda_gks[[g,k]] # model-implied mean if group g is in cluster k
-            S_gk=CP_gs[[g]]-t(mean_g)%*%mu_gk+t(mu_gk)%*%(mu_gk-mean_g)
-            S_gks[[g,k]] <- S_gk
-            S_g=S_g+N_gks[g,k]*S_gk
+            for(g in 1:ngroup){
+              psi_g=Psi_gs[[g]]
+              invPsi_g=diag(1/diag(psi_g))
+              invPsi_g_lambda_k=invPsi_g%*%lambda_k
+              phi_gk=Phi_gks[[g,k]]
+              invPhi_gk=phi_gk # phi_gk is still identity matrix
+              sigma_gk=lambda_k %*% phi_gk %*% tlambda_k + psi_g
+              Sigma_gks[[g,k]]=(sigma_gk+t(sigma_gk))*(1/2) # avoid asymmetry due to rounding errors
+              invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk+tlambda_k%*%invPsi_g_lambda_k)
+              invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk_tLambdainvPsi_g_Lambda+t(invPhi_gk_tLambdainvPsi_g_Lambda))*(1/2)
+              invSigma_gks[[g,k]]=invPsi_g-invPsi_g_lambda_k%*%solve(invPhi_gk_tLambdainvPsi_g_Lambda)%*%t(invPsi_g_lambda_k) # Woodbury identity
+            }
           }
-          S_gs[[g]] <- (1/N_gs[g])*S_g
-        }
 
-        # compute Beta_gks and theta_gks
-        Beta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
-        Theta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
-        meanexpEta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust) # mean of expected eta's for each group-cluster combination
-        #meanexpEta_gs <- matrix(list(0), nrow = ngroup, ncol = 1) # mean of expected eta's for each group
-        for(g in 1:ngroup){
-          for(k in 1:nclust){
-            lambda_k=Lambda_ks[[k]]
-            phi_gk=Phi_gks[[g,k]]
-            invsigma_gk=invSigma_gks[[g,k]]
-            beta_gk=phi_gk%*%t(lambda_k)%*%invsigma_gk
-            Beta_gks[[g,k]]=beta_gk;
-            S_gk=S_gks[[g,k]]
-            theta_gk=phi_gk-beta_gk%*%lambda_k%*%phi_gk+beta_gk%*%S_gk%*%t(beta_gk)
-            Theta_gks[[g,k]]=theta_gk
-            meanexpEta_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-alpha_tlambda_gks[[g,k]])%*%t(beta_gk)
-            #meanexpEta_gs[[g]]=meanexpEta_gs[[g]]+(N_gks[g,k]/N_gs[g])*meanexpEta_gks[[g,k]]
-          }
-        }
-
-        Output_Mstep <- mixmgfa_loadingsintercepts_Mstep(S_gs,S_gks,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,meanexpEta_gks,Lambda_ks,Psi_gs,Phi_gks,mean_gs,tau_ks,alpha_gks)
-        Lambda_ks=Output_Mstep$Lambda_ks
-        Psi_gs=Output_Mstep$Psi_gs
-        Phi_gks=Output_Mstep$Phi_gks
-        tau_ks=Output_Mstep$tau_ks
-        alpha_gks=Output_Mstep$alpha_gks
-        Sigma_gks=Output_Mstep$Sigma_gks
-        invSigma_gks=Output_Mstep$invSigma_gks
-        nractivatedconstraints=Output_Mstep$nractivatedconstraints
-
-        S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
-        S_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
-        for(g in 1:ngroup){
-          S_g=matrix(0,nvar,nvar)
-          mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-          for(k in 1:nclust){
-            lambda_k=Lambda_ks[[k]]
-            tlambda_k=t(lambda_k)
-            mu_gk=tau_ks[k,]+alpha_gks[[g,k]]%*%tlambda_k # model-implied mean if group g is in cluster k
-            S_gk=CP_gs[[g]]-t(mean_g)%*%mu_gk+t(mu_gk)%*%(mu_gk-mean_g)
-            S_gks[[g,k]] <- S_gk
-            S_g=S_g+N_gks[g,k]*S_gk
-          }
-          S_gs[[g]] <- (1/N_gs[g])*S_g
-        }
-
-        # compute observed-data log-likelihood for start
-        ODLL_trialstart=0;
-        loglik_gks <- matrix(0, nrow = ngroup, ncol = nclust) # unweighted with mixing proportions, to be re-used for calculation posterior classification probabilities
-        loglik_gksw <- matrix(0, nrow = ngroup, ncol = nclust) # weighted with mixing proportions
-        for(g in 1:ngroup){
-          # X_g=Xsup[Ncum[g,1]:Ncum[g,2],]
-          # for(k in 1:nclust){
-          #   logdet_sigma_gk=log(det(Sigma_gks[[g,k]]))
-          #   invSigma_gk=invSigma_gks[[g,k]]
-          #   lambda_k=Lambda_ks[[k]]
-          #   Xc_gk=X_g-t(matrix(tau_ks[k,]+alpha_gks[[g,k]]%*%t(lambda_k),ncol=N_gs[g],nrow=nvar)) # centered data per group
-          #   loglik_gk=-(1/2)*(N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk))
-          #   for (n in 1:N_gs[g]){
-          #     Xc_n=Xc_gk[n, ,drop=FALSE]
-          #     loglik_gk=loglik_gk-(1/2)*(Xc_n%*%tcrossprod(invSigma_gk,Xc_n))
+          # if (is.matrix(data)==FALSE & is.data.frame(data)==FALSE){
+          #   # cycle 1 update factor means (see De Roover, 2021)
+          #   for(g in 1:ngroup){
+          #     for(k in 1:nclust){
+          #       if(N_ks[k]>0){
+          #         lambda_k=Lambda_ks[[k]]
+          #         tlambda_k=t(lambda_k)
+          #         invSigma_gk=invSigma_gks[[g,k]]
+          #         alpha_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,])%*%t(solve(((tlambda_k%*%invSigma_gk)%*%lambda_k),(tlambda_k%*%invSigma_gk)))
+          #       }
+          #     }
           #   }
-          #   loglik_gks[g,k]=loglik_gk
-          #   loglik_gksw[g,k]=log(pi_ks[k])+loglik_gk
           # }
-          for(k in 1:nclust){
-            logdet_sigma_gk=log(det(Sigma_gks[[g,k]]))
-            loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_gks[[g,k]]*invSigma_gks[[g,k]])) # sum(S_gks[[g,k]]*invSigma_gks[[g,k]])=sum(diag(S_gks[[g,k]]%*%invSigma_gks[[g,k]]))
-            loglik_gks[g,k]=loglik_gk
-            loglik_gksw[g,k]=log(pi_ks[k])+loglik_gk
+
+          S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
+          S_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
+          alpha_tlambda_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
+          for(g in 1:ngroup){
+            S_g=matrix(0,nvar,nvar)
+            mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
+            for(k in 1:nclust){
+              lambda_k=Lambda_ks[[k]]
+              tlambda_k=t(lambda_k)
+              alpha_tlambda_gks[[g,k]]=alpha_gks[[g,k]]%*%tlambda_k
+              mu_gk=tau_ks[k,]+alpha_tlambda_gks[[g,k]] # model-implied mean if group g is in cluster k
+              S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
+              S_gks[[g,k]] <- S_gk
+              S_g=S_g+N_gks[g,k]*S_gk
+            }
+            S_gs[[g]] <- (1/N_gs[g])*S_g
           }
-          m_i=max(loglik_gksw[g,]);
-          for(k in 1:nclust){
-            loglik_gksw[g,k]=exp(loglik_gksw[g,k]-m_i); # exp because we have to sum over clusters before we can take the log
+
+          # compute Beta_gks and theta_gks
+          Beta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+          Theta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+          meanexpEta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust) # mean of expected eta's for each group-cluster combination
+          #meanexpEta_gs <- matrix(list(0), nrow = ngroup, ncol = 1) # mean of expected eta's for each group
+          for(g in 1:ngroup){
+            for(k in 1:nclust){
+              lambda_k=Lambda_ks[[k]]
+              phi_gk=Phi_gks[[g,k]]
+              invsigma_gk=invSigma_gks[[g,k]]
+              beta_gk=phi_gk%*%crossprod(lambda_k,invsigma_gk)
+              tbeta_gk=t(beta_gk)
+              Beta_gks[[g,k]]=beta_gk;
+              S_gk=S_gks[[g,k]]
+              theta_gk=phi_gk-beta_gk%*%(lambda_k%*%phi_gk-S_gk%*%tbeta_gk)
+              Theta_gks[[g,k]]=theta_gk
+              meanexpEta_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-alpha_tlambda_gks[[g,k]])%*%tbeta_gk
+              #meanexpEta_gs[[g]]=meanexpEta_gs[[g]]+(N_gks[g,k]/N_gs[g])*meanexpEta_gks[[g,k]]
+            }
           }
-          ODLL_trialstart=ODLL_trialstart+log(sum(loglik_gksw[g,]))+m_i;
+
+          Output_Mstep <- mixmgfa_loadingsintercepts_Mstep(S_gs,S_gks,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,meanexpEta_gks,Lambda_ks,Psi_gs,Phi_gks,mean_gs,tau_ks,alpha_gks)
+          Lambda_ks=Output_Mstep$Lambda_ks
+          Psi_gs=Output_Mstep$Psi_gs
+          Phi_gks=Output_Mstep$Phi_gks
+          tau_ks=Output_Mstep$tau_ks
+          alpha_gks=Output_Mstep$alpha_gks
+          Sigma_gks=Output_Mstep$Sigma_gks
+          invSigma_gks=Output_Mstep$invSigma_gks
+          nractivatedconstraints=Output_Mstep$nractivatedconstraints
+
+          S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
+          S_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
+          for(g in 1:ngroup){
+            S_g=matrix(0,nvar,nvar)
+            mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
+            for(k in 1:nclust){
+              lambda_k=Lambda_ks[[k]]
+              tlambda_k=t(lambda_k)
+              mu_gk=tau_ks[k,]+alpha_gks[[g,k]]%*%tlambda_k # model-implied mean if group g is in cluster k
+              S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
+              S_gks[[g,k]] <- S_gk
+              S_g=S_g+N_gks[g,k]*S_gk
+            }
+            S_gs[[g]] <- (1/N_gs[g])*S_g
+          }
+
+          # compute observed-data log-likelihood for start
+          ODLL_trialstart=0;
+          loglik_gks <- matrix(0, nrow = ngroup, ncol = nclust) # unweighted with mixing proportions, to be re-used for calculation posterior classification probabilities
+          loglik_gksw <- matrix(0, nrow = ngroup, ncol = nclust) # weighted with mixing proportions
+          for(g in 1:ngroup){
+            # X_g=Xsup[Ncum[g,1]:Ncum[g,2],]
+            # for(k in 1:nclust){
+            #   logdet_sigma_gk=log(det(Sigma_gks[[g,k]]))
+            #   invSigma_gk=invSigma_gks[[g,k]]
+            #   lambda_k=Lambda_ks[[k]]
+            #   Xc_gk=X_g-t(matrix(tau_ks[k,]+alpha_gks[[g,k]]%*%t(lambda_k),ncol=N_gs[g],nrow=nvar)) # centered data per group
+            #   loglik_gk=-(1/2)*(N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk))
+            #   for (n in 1:N_gs[g]){
+            #     Xc_n=Xc_gk[n, ,drop=FALSE]
+            #     loglik_gk=loglik_gk-(1/2)*(Xc_n%*%tcrossprod(invSigma_gk,Xc_n))
+            #   }
+            #   loglik_gks[g,k]=loglik_gk
+            #   loglik_gksw[g,k]=log(pi_ks[k])+loglik_gk
+            # }
+            for(k in 1:nclust){
+              logdet_sigma_gk=log(det(Sigma_gks[[g,k]]))
+              loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_gks[[g,k]]*invSigma_gks[[g,k]])) # sum(S_gks[[g,k]]*invSigma_gks[[g,k]])=sum(diag(S_gks[[g,k]]%*%invSigma_gks[[g,k]]))
+              loglik_gks[g,k]=loglik_gk
+              loglik_gksw[g,k]=log(pi_ks[k])+loglik_gk
+            }
+            m_i=max(loglik_gksw[g,]);
+            for(k in 1:nclust){
+              loglik_gksw[g,k]=exp(loglik_gksw[g,k]-m_i); # exp because we have to sum over clusters before we can take the log
+            }
+            ODLL_trialstart=ODLL_trialstart+log(sum(loglik_gksw[g,]))+m_i;
+          }
+          ODLLs_trialstarts[trialstart]=ODLL_trialstart;
         }
-        ODLLs_trialstarts[trialstart]=ODLL_trialstart;
       }
-      sortedstarts <- sort(ODLLs_trialstarts,decreasing=TRUE,index.return=TRUE);
-      index_beststarts=sortedstarts$ix[1:nruns]
       if (nrtrialstarts>nruns){
+        sortedstarts <- sort(ODLLs_trialstarts,decreasing=TRUE,index.return=TRUE);
+        index_beststarts=sortedstarts$ix[1:nruns]
         randpartvecs=randpartvecs[index_beststarts,]
         if(nruns==1){
           randpartvecs=matrix(randpartvecs)
@@ -391,8 +395,13 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
       }
     }
     else {
-      nruns=1;
-      randpartvecs=matrix(1,1,ngroup)
+      nruns=1
+      if(nclust==1){
+        randpartvecs=matrix(1,1,ngroup)
+      }
+      if (nclust==ngroup){
+        randpartvecs=matrix(1:ngroup,1,ngroup)
+      }
     }
   }
 
@@ -421,7 +430,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
       z_gks=t(randpartvec)
       pi_ks=1
     }
-    N_gks=diag(N_gs[,1])%*%z_gks
+    N_gks=sweep(z_gks,N_gs,MARGIN=1,'*',check.margin = FALSE) #N_gks=diag(N_gs[,1])%*%z_gks
     N_ks=colSums(N_gks)
 
     tau_ks <- matrix(0,nclust,nvar)
@@ -441,7 +450,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
         if(randpartvec[g]==k){
           mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
           mu_gk=matrix(tau_ks[k,],nrow=1,ncol=nvar)
-          S_gk=CP_gs[[g]]-t(mean_g)%*%mu_gk-t(mu_gk)%*%mean_g+t(mu_gk)%*%mu_gk
+          S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)-crossprod(mu_gk,mean_g)+crossprod(mu_gk,mu_gk)
           S_k=S_k+N_gs[g]*S_gk
         }
       }
@@ -499,16 +508,18 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
     invSigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
     for(k in 1:nclust){
       lambda_k=Lambda_ks[[k]]
+      tlambda_k=t(lambda_k)
       for(g in 1:ngroup){
         psi_g=Psi_gs[[g]]
         invPsi_g=diag(1/diag(psi_g))
+        invPsi_g_lambda_k=invPsi_g%*%lambda_k
         phi_gk=Phi_gks[[g,k]]
         invPhi_gk=solve(phi_gk)
-        sigma_gk=lambda_k %*% phi_gk %*% t(lambda_k) + psi_g
+        sigma_gk=lambda_k %*% phi_gk %*% tlambda_k + psi_g
         Sigma_gks[[g,k]]=(sigma_gk+t(sigma_gk))*(1/2) # avoid asymmetry due to rounding errors
-        invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk+t(lambda_k)%*%invPsi_g%*%lambda_k)
+        invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk+tlambda_k%*%invPsi_g_lambda_k)
         invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk_tLambdainvPsi_g_Lambda+t(invPhi_gk_tLambdainvPsi_g_Lambda))*(1/2)
-        invSigma_gks[[g,k]]=invPsi_g-invPsi_g%*%lambda_k%*%solve(invPhi_gk_tLambdainvPsi_g_Lambda)%*%t(lambda_k)%*%invPsi_g; # Woodbury identity
+        invSigma_gks[[g,k]]=invPsi_g-invPsi_g_lambda_k%*%solve(invPhi_gk_tLambdainvPsi_g_Lambda)%*%t(invPsi_g_lambda_k) # Woodbury identity
       }
     }
 
@@ -536,7 +547,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
         lambda_k=Lambda_ks[[k]]
         tlambda_k=t(lambda_k)
         mu_gk=tau_ks[k,]+alpha_gks[[g,k]]%*%tlambda_k # model-implied mean if group g is in cluster k
-        S_gk=CP_gs[[g]]-t(mean_g)%*%mu_gk+t(mu_gk)%*%(mu_gk-mean_g)
+        S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
         S_gks[[g,k]] <- S_gk
         S_g=S_g+N_gks[g,k]*S_gk
       }
@@ -575,15 +586,14 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
       iter=iter+1
 
       # **E-step**: compute the posterior classification probabilities
-      z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, nfactors)
+      if(nclust>1 && nclust<ngroup){
+        z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, nfactors)
+        pi_ks=(1/ngroup)*colSums(z_gks) # update mixing proportions
+      }
 
-
-      N_gks=diag(N_gs[,1])%*%z_gks
+      N_gks=sweep(z_gks,N_gs,MARGIN=1,'*',check.margin = FALSE) #N_gks=diag(N_gs[,1])%*%z_gks
       N_ks=colSums(N_gks)
 
-
-      # update mixing proportions
-      pi_ks=(1/ngroup)*colSums(z_gks)
 
       S_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
       alpha_tlambda_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
@@ -591,8 +601,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
         S_g=matrix(0,nvar,nvar)
         for(k in 1:nclust){
           lambda_k=Lambda_ks[[k]]
-          tlambda_k=t(lambda_k)
-          alpha_tlambda_gks[[g,k]]=alpha_gks[[g,k]]%*%tlambda_k # used below
+          alpha_tlambda_gks[[g,k]]=tcrossprod(alpha_gks[[g,k]],lambda_k) # used below
           S_g=S_g+N_gks[g,k]*S_gks[[g,k]]
         }
         S_gs[[g]] <- (1/N_gs[g])*S_g
@@ -608,12 +617,13 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
           lambda_k=Lambda_ks[[k]]
           phi_gk=Phi_gks[[g,k]]
           invsigma_gk=invSigma_gks[[g,k]]
-          beta_gk=phi_gk%*%t(lambda_k)%*%invsigma_gk
-          Beta_gks[[g,k]]=beta_gk;
+          beta_gk=phi_gk%*%crossprod(lambda_k,invsigma_gk)
+          tbeta_gk=t(beta_gk)
+          Beta_gks[[g,k]]=beta_gk
           S_gk=S_gks[[g,k]]
-          theta_gk=phi_gk-beta_gk%*%lambda_k%*%phi_gk+beta_gk%*%S_gk%*%t(beta_gk)
+          theta_gk=phi_gk-beta_gk%*%(lambda_k%*%phi_gk-S_gk%*%tbeta_gk)
           Theta_gks[[g,k]]=theta_gk
-          meanexpEta_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-alpha_tlambda_gks[[g,k]])%*%t(beta_gk)
+          meanexpEta_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-alpha_tlambda_gks[[g,k]])%*%tbeta_gk
           #meanexpEta_gs[[g]]=meanexpEta_gs[[g]]+(N_gks[g,k]/N_gs[g])*meanexpEta_gks[[g,k]]
         }
       }
@@ -637,7 +647,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
           lambda_k=Lambda_ks[[k]]
           tlambda_k=t(lambda_k)
           mu_gk=tau_ks[k,]+alpha_gks[[g,k]]%*%tlambda_k # model-implied mean if group g is in cluster k
-          S_gk=CP_gs[[g]]-t(mean_g)%*%mu_gk+t(mu_gk)%*%(mu_gk-mean_g)
+          S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
           S_gks[[g,k]] <- S_gk
           S_g=S_g+N_gks[g,k]*S_gk
         }
@@ -761,14 +771,14 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
     iter=iter+1
 
     # **E-step**: compute the posterior classification probabilities
-    z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, nfactors)
+    if(nclust>1 && nclust<ngroup){
+      z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, nfactors)
+      pi_ks=(1/ngroup)*colSums(z_gks) # update mixing proportions
+    }
 
-
-    N_gks=diag(N_gs[,1])%*%z_gks
+    N_gks=sweep(z_gks,N_gs,MARGIN=1,'*',check.margin = FALSE) #N_gks=diag(N_gs[,1])%*%z_gks
     N_ks=colSums(N_gks)
 
-    # update mixing proportions
-    pi_ks=(1/ngroup)*colSums(z_gks)
 
     if(iter==bestiter+1){
       S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
@@ -782,7 +792,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
           tlambda_k=t(lambda_k)
           alpha_tlambda_gks[[g,k]]=alpha_gks[[g,k]]%*%tlambda_k
           mu_gk=tau_ks[k,]+alpha_tlambda_gks[[g,k]] # model-implied mean if group g is in cluster k
-          S_gk=CP_gs[[g]]-t(mean_g)%*%mu_gk+t(mu_gk)%*%(mu_gk-mean_g)
+          S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
           S_gks[[g,k]] <- S_gk
           S_g=S_g+N_gks[g,k]*S_gk
         }
@@ -794,7 +804,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
       for(g in 1:ngroup){
         S_g=matrix(0,nvar,nvar)
         for(k in 1:nclust){
-          alpha_tlambda_gks[[g,k]]=alpha_gks[[g,k]]%*%t(Lambda_ks[[k]]) # used below
+          alpha_tlambda_gks[[g,k]]=tcrossprod(alpha_gks[[g,k]],Lambda_ks[[k]]) # used below
           S_g=S_g+N_gks[g,k]*S_gks[[g,k]]
         }
         S_gs[[g]] <- (1/N_gs[g])*S_g
@@ -812,12 +822,13 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
         lambda_k=Lambda_ks[[k]]
         phi_gk=Phi_gks[[g,k]]
         invsigma_gk=invSigma_gks[[g,k]]
-        beta_gk=phi_gk%*%t(lambda_k)%*%invsigma_gk
-        Beta_gks[[g,k]]=beta_gk;
+        beta_gk=phi_gk%*%crossprod(lambda_k,invsigma_gk)
+        tbeta_gk=t(beta_gk)
+        Beta_gks[[g,k]]=beta_gk
         S_gk=S_gks[[g,k]]
-        theta_gk=phi_gk-beta_gk%*%lambda_k%*%phi_gk+beta_gk%*%S_gk%*%t(beta_gk)
+        theta_gk=phi_gk-beta_gk%*%(lambda_k%*%phi_gk-S_gk%*%tbeta_gk)
         Theta_gks[[g,k]]=theta_gk
-        meanexpEta_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-alpha_tlambda_gks[[g,k]])%*%t(beta_gk)
+        meanexpEta_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-alpha_tlambda_gks[[g,k]])%*%tbeta_gk
         #meanexpEta_gs[[g]]=meanexpEta_gs[[g]]+(N_gks[g,k]/N_gs[g])*meanexpEta_gks[[g,k]]
       }
     }
@@ -841,7 +852,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
         lambda_k=Lambda_ks[[k]]
         tlambda_k=t(lambda_k)
         mu_gk=tau_ks[k,]+alpha_gks[[g,k]]%*%tlambda_k # model-implied mean if group g is in cluster k
-        S_gk=CP_gs[[g]]-t(mean_g)%*%mu_gk+t(mu_gk)%*%(mu_gk-mean_g)
+        S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
         S_gks[[g,k]] <- S_gk
         S_g=S_g+N_gks[g,k]*S_gk
       }
@@ -961,8 +972,8 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
       for(g in 1:ngroup){
         if(N_gks[g,k]>0){
           invSigma_gk=invSigma_gks[[g,k]]
-        summeansminusalphaLambdainvSigma=summeansminusalphaLambdainvSigma+N_gks[g,k]*(mean_gs[g,]-alpha_gks[[g,k]]%*%t(lambda_k))%*%invSigma_gk
-        suminvSigma=suminvSigma+N_gks[g,k]*invSigma_gk
+          summeansminusalphaLambdainvSigma=summeansminusalphaLambdainvSigma+N_gks[g,k]*(mean_gs[g,]-alpha_gks[[g,k]]%*%t(lambda_k))%*%invSigma_gk
+          suminvSigma=suminvSigma+N_gks[g,k]*invSigma_gk
         }
       }
       tau_ks[k,]=t(solve(suminvSigma,t(summeansminusalphaLambdainvSigma)))
@@ -992,22 +1003,22 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
 # Update the cluster-membership probabilities z_gk
 # Reuses the loglik_gks to save time
 
-UpdPostProb <- function(pi_ks, loglik_gks, ngroup, nclust, nfact){
+UpdPostProb <- function(pi_ks, loglik_gks, ngroup, nclust, nfact, v=1){
   max_g <-rep(0,ngroup)
   z_gks <- matrix(NA,nrow=ngroup,ncol=nclust)
 
   for(g in 1:ngroup){
     for(k in 1:nclust){
-      z_gks[g,k] <- log(pi_ks[k])+loglik_gks[g,k]
+      z_gks[g,k] <- v*log(pi_ks[k])+v*loglik_gks[g,k]
     }
     max_g[g] <- max(z_gks[g,]) # prevent arithmetic underflow
     z_gks[g,] <- exp(z_gks[g,]-rep(max_g[g],nclust))
   }
 
   # divide by the rowwise sum of the above calculated part
-  z_gks <- diag(1/rowSums(z_gks))%*%z_gks
+  z_gks <- sweep(z_gks,1/rowSums(z_gks),MARGIN=1,'*',check.margin = FALSE)#diag(1/rowSums(z_gks))%*%z_gks
   z_gks <- round(z_gks,digits=16)
-  z_gks <- diag(1/rowSums(z_gks))%*%z_gks
+  z_gks <- sweep(z_gks,1/rowSums(z_gks),MARGIN=1,'*',check.margin = FALSE)#diag(1/rowSums(z_gks))%*%z_gks
 
   return(z_gks)
 }
@@ -1018,6 +1029,12 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
   nractivatedconstraints <- 0
   ngroup <- length(N_gs)
   N_ks=colSums(N_gks)
+
+  # if(sum(design)==nvar*nfactors){ # if design contains only '1's, EFA is used
+  #   EFA=1
+  # } else {
+  #   EFA=0
+  # }
 
   invPsi_gs <- matrix(list(NA), nrow = ngroup, ncol = 1)
   for(g in 1:ngroup){
@@ -1076,12 +1093,12 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
             theta_gk=Theta_gks[[g,k]]
             alpha_gk=alpha_gks[[g,k]]
             meanexpeta_gk=meanexpEta_gks[[g,k]]
-            #if(nfactors_j<nfactors){
-            beta_gk=beta_gk[indfactors_j, ,drop=FALSE]
+            if(nfactors_j<nfactors){
+              beta_gk=beta_gk[indfactors_j, ,drop=FALSE]
+            }
             theta_gk=theta_gk[indfactors_j,indfactors_j]
             alpha_gk=alpha_gk[indfactors_j]
             meanexpeta_gk=meanexpeta_gk[indfactors_j]
-            #}
             talpha_gk=t(alpha_gk)
             sumSbeta=sumSbeta+(N_gks[g,k]/psi_g[j,j])*S_gk[j,]%*%t(beta_gk)
             sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j,j])*(theta_gk+(alpha_gk+meanexpeta_gk)%*%talpha_gk)
@@ -1106,7 +1123,7 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
         beta_gk=Beta_gks[[g,k]]
         theta_gk=Theta_gks[[g,k]]
 	      S_gk=S_gks[[g,k]]
-        sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*(2*lambda_k%*%beta_gk%*%S_gk-lambda_k%*%theta_gk%*%t(lambda_k)) # modelimplied reduced covariance matrix on sample level, based on old structure matrix and sigma_gk, weighting based on new z_gks
+        sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*(lambda_k%*%(2*beta_gk%*%S_gk-theta_gk%*%t(lambda_k))) # modelimplied reduced covariance matrix on sample level, based on old structure matrix and sigma_gk, weighting based on new z_gks
       }
     }
     psi_g=diag(diag(S_g-sum2SbetaB_BthetaB))
@@ -1141,13 +1158,14 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
     for(g in 1:ngroup){
       psi_g=Psi_gs[[g]]
       invPsi_g=diag(1/diag(psi_g))
+      invPsi_g_lambda_k=invPsi_g%*%lambda_k
       phi_gk=Phi_gks[[g,k]]
       invPhi_gk=solve(phi_gk)
       sigma_gk=lambda_k %*% phi_gk %*% tlambda_k + psi_g
       Sigma_gks[[g,k]]=(sigma_gk+t(sigma_gk))*(1/2) # avoid asymmetry due to rounding errors
-      invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk+tlambda_k%*%invPsi_g%*%lambda_k)
+      invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk+tlambda_k%*%invPsi_g_lambda_k)
       invPhi_gk_tLambdainvPsi_g_Lambda=(invPhi_gk_tLambdainvPsi_g_Lambda+t(invPhi_gk_tLambdainvPsi_g_Lambda))*(1/2)
-      invSigma_gks[[g,k]]=invPsi_g-invPsi_g%*%lambda_k%*%solve(invPhi_gk_tLambdainvPsi_g_Lambda)%*%tlambda_k%*%invPsi_g; # Woodbury identity
+      invSigma_gks[[g,k]]=invPsi_g-invPsi_g_lambda_k%*%solve(invPhi_gk_tLambdainvPsi_g_Lambda)%*%t(invPsi_g_lambda_k) # Woodbury identity
     }
   }
 
@@ -1187,6 +1205,27 @@ procr <- function(x,y){
   yhat <- x%*%R # rotated x that approximates y
 
   return(yhat)
+}
+
+stirlingnr2 <- function(n,k){
+
+  # The number of ways of partitioning a set of n elements into k nonempty sets (Stirling number of second kind).
+  # For example, the set {1,2,3} can be partitioned into three subsets in one way: {{1},{2},{3}}; into two subsets in three ways: {{1,2},{3}}, {{1,3},{2}},
+  # and {{1},{2,3}}; and into one subset in one way: {{1,2,3}}.
+
+
+  S=0
+  for(i in 0:k){
+    S=S+(-1)^i*round(factorial(k),digits=15)/(round(factorial(i),digits=15)*round(factorial(k-i),digits=15))*(k-i)^n
+  }
+  S=S/round(factorial(k),digits=15)
+
+
+  if(S<0){
+    S=1
+  }
+
+  return(S)
 }
 
 
