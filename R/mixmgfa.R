@@ -165,7 +165,7 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
       CP_g <- (1/N_gs[g])*crossprod(X_g,X_g) #(t(X_g)%*%X_g)
       obsS_gs[[g]] <- CP_g-tcrossprod(mean_g,mean_g) #mean_g%*%t(mean_g)
     }
-    if(length(cluster.spec)==1 & cluster.spec=="loadings"){
+    if(length(cluster.spec)==1 && cluster.spec=="loadings"){
       data2=obsS_gs
     } else {
       data2=list(covariances=obsS_gs,means=mean_gs)
@@ -200,7 +200,7 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     } else {
       mean_gs=matrix(mean_gs,ncol=nvar,nrow=ngroup,byrow = TRUE)
     }
-    if(length(cluster.spec)==1 & cluster.spec=="loadings"){
+    if(length(cluster.spec)==1 && cluster.spec=="loadings"){
       data2=obsS_gs
     } else {
       data2=list(covariances=obsS_gs,means=mean_gs)
