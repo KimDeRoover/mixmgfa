@@ -25,8 +25,9 @@ summary.mixmgfa <- function(x,nclust=0, ...){
     cat("\n")
     ngroups=nrow(x[[nclust]]$clustermemberships)
 
+    modalassign=apply(x[[nclust]]$clustermemberships,1,which.max)
     for(k in 1:nclust){
-      cl_names<-names(which(x[[nclust]]$clustermemberships[,k]>(1/nclust)))
+      cl_names<-names(which(modalassign==k))#names(which(x[[nclust]]$clustermemberships[,k]>(1/nclust)))
       cat(paste("Groups modally assigned to cluster ",k,":",sep=""))
       cat("\n")
       cat(cl_names)
@@ -84,10 +85,10 @@ summary.mixmgfa <- function(x,nclust=0, ...){
 
 
     if(!is.null(x[[nclust]]$groupspecific.means)){
-      cat("group-specific intercepts (= means):")
-      cat("\n")
-      cat("\n")
-      print(round(x[[nclust]]$groupspecific.means,4))
+      # cat("group-specific intercepts (= means):")
+      # cat("\n")
+      # cat("\n")
+      # print(round(x[[nclust]]$groupspecific.means,4))
     } else if(!is.null(x[[nclust]]$clusterspecific.intercepts)){
       cat("cluster-specific intercepts:")
       cat("\n")
@@ -121,6 +122,10 @@ summary.mixmgfa <- function(x,nclust=0, ...){
       uniquevariances=lapply(uniquevariances,round,digits=4)
       uniquevariances=matrix(unlist(uniquevariances,use.names = FALSE),nrow=l,ncol=nvar,byrow = TRUE)
       colnames(uniquevariances)=varnames
+      if(!is.null(x[[nclust]]$groupspecific.uniquevariances)){
+        groupnames=rownames(x[[nclust]]$clustermemberships)
+        rownames(uniquevariances)=groupnames
+      }
       print(as.data.frame(uniquevariances))
     }
     cat("\n")
