@@ -346,6 +346,10 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
       meanerror=totalerror/(nvar-nfactors) # mean error variance: mean variance in discarded dimensions
       Uniq=rep(meanerror,nvar)
       lambda_k=u[,seq_len(nfactors),drop=FALSE] %*% sqrt(diag(val[seq_len(nfactors)]-Uniq[seq_len(nfactors)],nrow=nfactors,ncol=nfactors))
+      if (EFA==0){
+        lambda_k <- procr(lambda_k,design)
+        lambda_k=lambda_k*design # non-zero loadings should be indicated with '1' for this to work properly
+      }
       Lambda_ks[[k]]=lambda_k
       uniq_ks[k,]=Uniq
     }
