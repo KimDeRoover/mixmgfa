@@ -32,6 +32,11 @@ For accessing the corresponding solution, use, for example:
 Output$MMGFAsolutions$`3.clusters`
 
 ```
+or
+```javascript
+Output$MMGFAsolutions[[3]]
+
+```
 followed by a '$' sign to access the cluster memberships and parameter sets.
 
 For printing a summary of the selected solution, use, for example:
@@ -41,4 +46,4 @@ summary(Output$MMGFAsolutions,nclust=3)
 ```
 
 # Contribution
-This package is a work-in-progress, so please report bugs and check back for updates (including more rotation and scaling options and improvements of the multistart procedure).
+This package is a work-in-progress, so please report bugs and check back for updates.
