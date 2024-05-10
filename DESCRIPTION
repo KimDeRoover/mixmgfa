@@ -1,11 +1,11 @@
 Package: mixmgfa
 Type: Package
 Title: Package for Mixture Multigroup Factor Analysis
-Version: 0.1.0
+Version: 0.2.0
 Author: Kim De Roover
 Maintainer: Kim De Roover <k.deroover@tilburguniversity.edu>
 Description: Package for finding clusters of groups for which a specific level of measurement invariance holds, by means of mixture multigroup factor analysis.
-License: What license is it under?
+License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.1.2
+RoxygenNote: 7.2.3
