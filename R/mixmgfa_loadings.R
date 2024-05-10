@@ -197,12 +197,17 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
 
           Sigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
           invSigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+          invPsi_gs <- matrix(list(NA),nrow=ngroup,ncol=1)
+          for(g in 1:ngroup){
+            psi_g=Psi_gs[[g]]
+            invPsi_gs[[g]]=diag(1/diag(psi_g))
+          }
           for(k in 1:nclust){
             lambda_k=Lambda_ks[[k]]
             tlambda_k=t(lambda_k)
             for(g in 1:ngroup){
               psi_g=Psi_gs[[g]]
-              invPsi_g=diag(1/diag(psi_g))
+              invPsi_g=invPsi_gs[[g]]
               invPsi_g_lambda_k=invPsi_g%*%lambda_k
               phi_gk=Phi_gks[[g,k]]
               invPhi_gk=phi_gk # here phi_gk is still identity matrix
@@ -216,30 +221,32 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
             }
           }
 
-          # compute Beta_gks and theta_gks
-          Beta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
-          Theta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
-          for(g in 1:ngroup){
-            S_g=S_gs[[g]]
-            for(k in 1:nclust){
-              lambda_k=Lambda_ks[[k]]
-              invsigma_gk=invSigma_gks[[g,k]]
-              phi_gk=Phi_gks[[g,k]]
-              beta_gk=phi_gk%*%crossprod(lambda_k,invsigma_gk) #t(lambda_k)%*%invsigma_gk
-              Beta_gks[[g,k]]=beta_gk;
-              theta_gk=phi_gk-beta_gk%*%lambda_k%*%phi_gk+beta_gk%*%tcrossprod(S_g,beta_gk) #S_g%*%t(beta_gk)
-              Theta_gks[[g,k]]=theta_gk
+          for(updateiter in 1:1){
+            # compute Beta_gks and theta_gks
+            Beta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+            Theta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+            for(g in 1:ngroup){
+              S_g=S_gs[[g]]
+              for(k in 1:nclust){
+                lambda_k=Lambda_ks[[k]]
+                invsigma_gk=invSigma_gks[[g,k]]
+                phi_gk=Phi_gks[[g,k]]
+                beta_gk=phi_gk%*%crossprod(lambda_k,invsigma_gk) #t(lambda_k)%*%invsigma_gk
+                Beta_gks[[g,k]]=beta_gk;
+                theta_gk=phi_gk-beta_gk%*%lambda_k%*%phi_gk+beta_gk%*%tcrossprod(S_g,beta_gk) #S_g%*%t(beta_gk)
+                Theta_gks[[g,k]]=theta_gk
+              }
             }
+
+
+            Output_Mstep <- mixmgfa_load_Mstep(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,Lambda_ks,Psi_gs,Phi_gks)
+            Lambda_ks=Output_Mstep$Lambda_ks
+            Psi_gs=Output_Mstep$Psi_gs
+            Phi_gks=Output_Mstep$Phi_gks
+            Sigma_gks=Output_Mstep$Sigma_gks
+            invSigma_gks=Output_Mstep$invSigma_gks
+            nractivatedconstraints=Output_Mstep$nractivatedconstrains
           }
-
-
-          Output_Mstep <- mixmgfa_load_Mstep(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,Lambda_ks,Psi_gs,Phi_gks)
-          Lambda_ks=Output_Mstep$Lambda_ks
-          Psi_gs=Output_Mstep$Psi_gs
-          Phi_gks=Output_Mstep$Phi_gks
-          Sigma_gks=Output_Mstep$Sigma_gks
-          invSigma_gks=Output_Mstep$invSigma_gks
-          nractivatedconstraints=Output_Mstep$nractivatedconstrains
 
 
           # compute observed-data log-likelihood for start
@@ -278,6 +285,15 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
         sortedstarts <- sort(ODLLs_trialstarts,decreasing=TRUE,index.return=TRUE);
         index_beststarts=sortedstarts$ix[1:nruns]
         randpartvecs=randpartvecs[index_beststarts,]
+        # if(nclust>2){
+        #   aris=matrix(0,nruns,nruns)
+        #   for (r1 in 1:nruns){
+        #     for (r2 in 1:nruns){
+        #       aris[r1,r2]<-adjrandindex(randpartvecs[r1,],randpartvecs[r2,])
+        #     }
+        #   }
+        #   print(max(aris[lower.tri(aris,diag=FALSE)]))
+        # }
         if(nruns==1){
           randpartvecs=matrix(randpartvecs)
         }
@@ -376,12 +392,17 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
 
     Sigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
     invSigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+    invPsi_gs <- matrix(list(NA),nrow=ngroup,ncol=1)
+    for(g in 1:ngroup){
+      psi_g=Psi_gs[[g]]
+      invPsi_gs[[g]]=diag(1/diag(psi_g))
+    }
     for(k in 1:nclust){
       lambda_k=Lambda_ks[[k]]
       tlambda_k=t(lambda_k)
       for(g in 1:ngroup){
         psi_g=Psi_gs[[g]]
-        invPsi_g=diag(1/diag(psi_g))
+        invPsi_g=invPsi_gs[[g]]
         invPsi_g_lambda_k=invPsi_g%*%lambda_k
         phi_gk=Phi_gks[[g,k]]
         invPhi_gk=solve(phi_gk)
@@ -404,17 +425,17 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
       }
     }
 
-    iter=0;
-    conv1=1;
-    conv2=1;
-    ODLL=-Inf;
+    iter=0
+    conv1=1
+    conv2=1
+    ODLL=-Inf
     pars=pi_ks
     for(k in 1:nclust){
       lambda_k=Lambda_ks[[k]]
       pars=c(pars,lambda_k[design==1])
     }
     pars=c(pars,unlist(lapply(Psi_gs,diag)),unlist(Phi_gks))
-    while(min(conv1,conv2)>1e-4 && iter<101){
+    while(min(conv1,conv2)>1e-4 && iter<100){
       prev_ODLL=ODLL
       prev_Lambda_ks=Lambda_ks
       prev_Psi_gs=Psi_gs
@@ -430,7 +451,7 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
         } else{
           v=1
         }
-        z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, nfactors,v=v)
+        z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, v=v)
         pi_ks=(1/ngroup)*colSums(z_gks) # update mixing proportions
       }
 
@@ -502,7 +523,7 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
 
     } # end while-loop till convergence
     # hier parameters beste start tot nu toe bijhouden
-    logliks[run,]=c(ODLL,nractivatedconstraints);
+    logliks[run,]=c(ODLL,nractivatedconstraints)
     if (run==1) {
       bestz_gks=z_gks
       bestpi_ks=pi_ks
@@ -571,7 +592,7 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
       } else{
         v=1
       }
-      z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, nfactors, v=v)
+      z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, v=v)
       pi_ks=(1/ngroup)*colSums(z_gks) # update mixing proportions
     }
 
@@ -715,7 +736,7 @@ mixmgfa_loadings <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start = 
 # Update the cluster-membership probabilities z_gk
 # Reuses loglik_gks to save time
 
-UpdPostProb <- function(pi_ks, loglik_gks, ngroup, nclust, nfact, v=1){
+UpdPostProb <- function(pi_ks, loglik_gks, ngroup, nclust, v=1){
   max_g <-rep(0,ngroup)
   z_gks <- matrix(NA,nrow=ngroup,ncol=nclust)
 
@@ -758,10 +779,11 @@ mixmgfa_load_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_
         nfactors_j=sum(design[j,])
         d_j=design[j,]==1
         sumSbeta_k=matrix(0,1,nfactors_j)
+        #tsumSbeta_k=matrix(0,nfactors_j,1)
         sumtheta_k=matrix(0,nfactors_j,nfactors_j)
         for(g in 1:ngroup){
           if(N_gks[g,k]>0){
-            psi_g=Psi_gs[[g]]
+            psi_g=diag(Psi_gs[[g]])
             S_g=S_gs[[g]]
             beta_gk=Beta_gks[[g,k]]
             theta_gk=Theta_gks[[g,k]]
@@ -770,19 +792,55 @@ mixmgfa_load_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_
               #theta_gk=theta_gk[d_j,d_j]
             }
             theta_gk=theta_gk[d_j,d_j]
-            sumSbeta_k=sumSbeta_k+(N_gks[g,k]/psi_g[j,j])*tcrossprod(S_g[j,],beta_gk)
-            sumtheta_k=sumtheta_k+(N_gks[g,k]/psi_g[j,j])*theta_gk
+            sumSbeta_k=sumSbeta_k+(N_gks[g,k]/psi_g[j])*tcrossprod(S_g[j,],beta_gk)
+            # tsumSbeta_k=tsumSbeta_k+(N_gks[g,k]/psi_g[j])*(beta_gk%*%S_g[,j])
+            sumtheta_k=sumtheta_k+(N_gks[g,k]/psi_g[j])*theta_gk
           }
         }
         lambda_k[j,d_j]= t(solve(sumtheta_k,t(sumSbeta_k)))
+        #lambda_k[j,d_j]= t(solve(sumtheta_k,tsumSbeta_k)) # not faster
       }
       Lambda_ks[[k]]=lambda_k
     }
   }
 
+  # # update cluster-specific loadings
+  # for(k in 1:nclust){
+  #   if(N_ks[k]>1e-6){
+  #     lambda_k=matrix(0,nvar,nfactors)
+  #     sumSbeta_kjs=matrix(list(0),1,nvar)
+  #     sumtheta_kjs=matrix(list(0),1,nvar)
+  #     for(g in 1:ngroup){
+  #       N_gk=N_gks[g,k]
+  #       if(N_gk>0){
+  #         psi_g=diag(Psi_gs[[g]])
+  #         S_g=S_gs[[g]]
+  #         beta_gk=Beta_gks[[g,k]]
+  #         theta_gk=Theta_gks[[g,k]]
+  #         S_g_beta_gkt=tcrossprod(S_g,beta_gk)
+  #         for(j in 1:nvar){
+  #           d_j=design[j,]==1
+  #           if(EFA==0){
+  #             beta_gk=beta_gk[d_j, ,drop=FALSE]
+  #             #theta_gk=theta_gk[d_j,d_j]
+  #           }
+  #           theta_gk=theta_gk[d_j,d_j]
+  #           N_gkpsi_gj=N_gk/psi_g[j]
+  #           sumSbeta_kjs[[j]]=sumSbeta_kjs[[j]]+(N_gkpsi_gj)*S_g_beta_gkt[j, ,drop=FALSE]
+  #           sumtheta_kjs[[j]]=sumtheta_kjs[[j]]+(N_gkpsi_gj)*theta_gk
+  #         }
+  #       }
+  #     }
+  #     for(j in 1:nvar){
+  #       lambda_k[j,d_j]=t(solve(sumtheta_kjs[[j]],t(sumSbeta_kjs[[j]])))
+  #     }
+  #     Lambda_ks[[k]]=lambda_k
+  #   }
+  # }
 
   # update unique variances
   nractivatedconstraints=0
+  invPsi_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
   for(g in 1:ngroup){
     S_g=S_gs[[g]]
     sum2SbetaB_BthetaB=0;
@@ -794,15 +852,16 @@ mixmgfa_load_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_
         sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*(lambda_k%*%(2*beta_gk%*%S_g-tcrossprod(theta_gk,lambda_k))) # modelimplied reduced covariance matrix on sample level, based on old structure matrix and sigma_gk, weighting based on new z_gks
       }
     }
-    psi_g=diag(diag(S_g-sum2SbetaB_BthetaB))
-    if (sum(diag(psi_g)<.0001)>0){ # track "heywood" cases
-      ind=diag(psi_g)<.0001
-      d=diag(psi_g);
-      d[ind]=0.0001;
-      psi_g=diag(d);
+    psi_g=(S_g-sum2SbetaB_BthetaB)*diag(nvar)#diag(diag(S_g-sum2SbetaB_BthetaB))
+    d=diag(psi_g)
+    if (sum(d<.0001)>0){ # track "heywood" cases
+      ind=d<.0001
+      d[ind]=0.0001
+      psi_g=diag(d)
       nractivatedconstraints=nractivatedconstraints+sum(ind)
     }
     Psi_gs[[g]]=psi_g
+    invPsi_gs[[g]]=diag(1/d) #diag(1/diag(psi_g))
   }
 
   # update factor (co)variances
@@ -833,7 +892,7 @@ mixmgfa_load_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_
     tlambda_k=t(lambda_k)
     for(g in 1:ngroup){
       psi_g=Psi_gs[[g]]
-      invPsi_g=diag(1/diag(psi_g))
+      invPsi_g=invPsi_gs[[g]] #diag(1/diag(psi_g))
       invPsi_g_lambda_k=invPsi_g%*%lambda_k
       phi_gk=Phi_gks[[g,k]]
       invPhi_gk=solve(phi_gk)

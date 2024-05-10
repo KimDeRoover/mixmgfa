@@ -85,10 +85,10 @@ summary.mixmgfa <- function(x,nclust=0, ...){
 
 
     if(!is.null(x[[nclust]]$groupspecific.means)){
-      # cat("group-specific intercepts (= means):")
-      # cat("\n")
-      # cat("\n")
-      # print(round(x[[nclust]]$groupspecific.means,4))
+      cat("group-specific intercepts (= means):")
+      cat("\n")
+      cat("\n")
+      print(round(x[[nclust]]$groupspecific.means,4))
     } else if(!is.null(x[[nclust]]$clusterspecific.intercepts)){
       cat("cluster-specific intercepts:")
       cat("\n")

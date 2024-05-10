@@ -498,7 +498,7 @@ mixmgfa_residuals <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start =
     conv2=1;
     ODLL=-Inf;
     pars=c(pi_ks,Lambda[design==1],unlist(lapply(Psi_ks,diag)),unlist(Phi_gs),as.vector(tau),unlist(alpha_gs))
-    while(min(conv1,conv2)>1e-4 && iter<101){
+    while(min(conv1,conv2)>1e-4 && iter<100){
       prev_ODLL=ODLL
       prev_Lambda=Lambda
       prev_Psi_ks=Psi_ks
@@ -510,7 +510,7 @@ mixmgfa_residuals <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start =
 
       # **E-step**: compute the posterior classification probabilities
       if(nclust>1 && nclust<ngroup){
-        z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, nfactors)
+        z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust)
         pi_ks=(1/ngroup)*colSums(z_gks) # update mixing proportions
       }
 
@@ -661,7 +661,7 @@ mixmgfa_residuals <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start =
 
     # **E-step**: compute the posterior classification probabilities
     if(nclust>1 && nclust<ngroup){
-      z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust, nfactors)
+      z_gks <- UpdPostProb(pi_ks, loglik_gks, ngroup, nclust)
       pi_ks=(1/ngroup)*colSums(z_gks) # update mixing proportions
     }
 
@@ -848,7 +848,7 @@ mixmgfa_residuals <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start =
 
 # Update the cluster-membership probabilities z_gk
 # Reuses the loglik_gks to save time
-UpdPostProb <- function(pi_ks, loglik_gks, ngroup, nclust, nfact, v=1){
+UpdPostProb <- function(pi_ks, loglik_gks, ngroup, nclust, v=1){
   max_g <-rep(0,ngroup)
   z_gks <- matrix(NA,nrow=ngroup,ncol=nclust)
 

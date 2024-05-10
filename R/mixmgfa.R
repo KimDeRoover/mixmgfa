@@ -15,9 +15,9 @@
 #' If left unspecified in case of raw data input, this vector is derived from the first column of the data matrix.
 #' If left unspecified in case of covariance matrix & means input, a warning is issued.
 #' @param nfactors Number of factors.
-#' @param cluster.spec Measurement parameters you want to cluster the groups on; "loadings", "intercepts", "residuals", c("loadings","intercepts"), c("intercepts","residuals"), or c("loadings","intercepts","residuals").
+#' @param cluster.spec Measurement parameters you want to cluster the groups on; "loadings", "intercepts", "residuals", c("loadings","intercepts"), c("intercepts","residuals"), c("loadings","residuals"), or c("loadings","intercepts","residuals").
 #' Note: cluster.spec = "intercepts" and cluster.spec = c("intercepts","residuals") impose invariant loadings across all groups, cluster.spec = "residuals" also imposes invariant intercepts across all groups.
-#' @param nsclust Vector of length two, indicating the minimal and maximal number of clusters (it is recommended to set the minimal number to one).
+#' @param nsclust Vector of length one or two indicating the number(s) of clusters. In case of length two, the vector indicates the minimal and maximal number of clusters (it is recommended to set the minimal number to one).
 #' @param maxiter Maximum number of iterations used in each MMG-FA analysis. Increase in case of non-convergence.
 #' @param nruns Number of (preselected) random starts (important for avoiding local maxima in case of few groups and/or small groups).
 #' @param design For confirmatory factor analysis, matrix (with ncol = nfactors) indicating position of zero loadings with '0' and non-zero loadings with '1'. Leave unspecified for exploratory factor analysis (EFA).
@@ -26,12 +26,15 @@
 #' @param preselect Percentage of best starts taken in pre-selection of initial partitions (for huge datasets, increase to speed up multistart procedure).
 #' @param targetT Target matrix to use when rotation = "target". Note that the same target is used for all clusters. For using cluster-specific target matrices, use rotation = 0 and rotate the cluster-specific factors afterwards with the GPFobl function of GPArotation.
 #' @param targetW Weights to be used when rotation = "target". You can set an entire row to zero to make sure that the simple structure is not messed up by a 'complex variable' (i.e., with strong loadings for multiple factors). Set all weights equal to '1' if you prefer fully specified target rotation. When left unspecified while rotation = target, the default is a targetW where the zeros in the target get a weight of '1' and the non-zeros in the target get a weight of '0'. If this results in all zero weights or too many zeros for the rotation to be identified, a fully specified target rotation (all weights equal to '1') is used instead.
+#' @param rescov Binary matrix to specify residual item covariances. Not yet supported in the current package version!
+#' @param parcomp Specified as 0 or 1 to indicate if parallel computation should be performed to speed up the computation. If parcomp==1, analyses with different numbers of clusters are executed simultaneously by using multiple cores on your machine.
+#' @param freecores The number of cores kept free for other tasks during parallel computation (if parcomp == 1).
 
 
 # OUTPUT:
 #' @return Output object (list) with:
 #'
-#' $overview = overview of fitted MMG-FA solutions with loglikelihood (loglik), number of parameters (nrpars), BIC_N (using total number of observations as sample size), BIC_G (using number of groups as sample size),
+#' $overview = overview of fitted MMG-FA solutions with loglikelihood (loglik), number of parameters (nrpars), BIC_N (using total number of observations as sample size), BIC_G (using number of groups as sample size), AIC,
 #' CHull screeratios (NA = scree ratio could not be computed due to solution being first, last or not on the hull), convergence (1 = converged) and number of activated constraints on the unique variances.
 #'
 #' $MMGFAsolutions = list of MMG-FA solutions with different numbers of clusters.
@@ -42,9 +45,10 @@
 #'
 #' De Roover, K. (2021). Finding clusters of groups with measurement invariance: Unraveling intercept non-invariance with mixture multigroup factor analysis. Structural Equation Modeling: A Multidisciplinary Journal, 28(5), 663-683.
 #'
+#' Leitgöb, H., Seddig, D., Asparouhov, T., Behr, D., Davidov, E., De Roover, K., ... & van de Schoot, R. (2023). Measurement invariance in the social sciences: Historical development, methodological challenges, state of the art, and future perspectives. Social Science Research, 110, 102805.
 
 #' @export
-mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","intercepts","residuals"),nsclust = c(1,5),maxiter = 5000,nruns = 25,design=0,rotation=0,preselect = 10,targetT=0,targetW=0){
+mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","intercepts","residuals"),nsclust = c(1,5),maxiter = 5000,nruns = 25,design=0,rotation=0,preselect = 10,targetT=0,targetW=0,rescov=0,parcomp=1,freecores=2){
   if(rotation!=0){
     if(rotation=="varimax" || rotation=="Varimax" || rotation=="VARIMAX"){
       rotation="varimax"
@@ -78,9 +82,9 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
         cat("Note: targetW is unspecified. A weight matrix is derived from targetT so that the zeros in targetT are approximated.")
         cat("\n")
         if(sum(targetW)<(nfactors*(nfactors-1))){
-          targetW=matrix(1,nvar,nfactors)
+          targetW=matrix(1,ncol(targetT),nfactors)
           cat("Note: targetW is unspecified. A valid weight matrix could not be derived from targetT, so fully specified target rotation will be performed.")
-
+          cat("\n")
         }
       }
     }
@@ -98,6 +102,20 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     }
   }
 
+  if(!require(doParallel)){ # test if package is loaded
+    loadtest<-try(library(doParallel),silent=TRUE) # test if package can be loaded (if it is installed)
+    if(class(loadtest)=="try-error"){
+      install.packages("doParallel")
+    }
+  }
+  if(!require(parallel)){ # test if package is loaded
+    loadtest<-try(library(parallel),silent=TRUE) # test if package can be loaded (if it is installed)
+    if(class(loadtest)=="try-error"){
+      install.packages("parallel")
+    }
+  }
+
+
 
   options(warn=-1)
 
@@ -110,9 +128,11 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
       N_gs=as.matrix(N_gs)
       checkfirstcolumn=0
       firstcolID=TRUE
-    } else { # if N_gs is given as input, check whether first column of data contains group ID
+    } else { # if N_gs is given as input, check whether first column of data and contains group ID (below)
       checkfirstcolumn=1
       firstcolID=FALSE
+      cat("Note: The data should be ordered according to the group memberships (with all rows of a group placed directly below one another). Reorder the data and repeat the analysis if this is not the case.")
+      cat("\n")
     }
     ngroup <- length(N_gs)
     if(nrow(N_gs)!=ngroup || is.null(nrow(N_gs))){ # make sure N_gs is a column vector
@@ -121,6 +141,9 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
         N_gs_colvec[g,]=N_gs[g]
       }
       N_gs <- N_gs_colvec
+    }
+    if(sum(diff(data[,1])!=0)>ngroup){
+      stop("The analysis cannot be performed because the data matrix is not ordered according to the group labels in column one. All rows of a group should be placed directly below one another.")
     }
     if (checkfirstcolumn==1){
       T<-table(data[,1])
@@ -165,11 +188,13 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
       CP_g <- (1/N_gs[g])*crossprod(X_g,X_g) #(t(X_g)%*%X_g)
       obsS_gs[[g]] <- CP_g-tcrossprod(mean_g,mean_g) #mean_g%*%t(mean_g)
     }
-    if(length(cluster.spec)==1 && cluster.spec=="loadings"){
-      data2=obsS_gs
-    } else {
+    # if(length(cluster.spec)==1 && cluster.spec=="loadings"){
+    #   data2=obsS_gs
+    # } else if (length(cluster.spec)==2 && is.element("loadings",cluster.spec) && is.element("residuals",cluster.spec)) {
+    #   data2=obsS_gs
+    # } else {
       data2=list(covariances=obsS_gs,means=mean_gs)
-    }
+    # }
   } else { # input is list or concatenation of covariance matrices and mean vectors
     if (is.null(N_gs)){
       stop("WARNING: You seem to have used covariances and means as input, without specifying the vector of group-specific sample sizes N_gs.")
@@ -200,11 +225,13 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     } else {
       mean_gs=matrix(mean_gs,ncol=nvar,nrow=ngroup,byrow = TRUE)
     }
-    if(length(cluster.spec)==1 && cluster.spec=="loadings"){
-      data2=obsS_gs
-    } else {
+    # if(length(cluster.spec)==1 && cluster.spec[1]=="loadings"){
+    #   data2=obsS_gs
+    # } else if (length(cluster.spec)==2 && is.element("loadings",cluster.spec) && is.element("residuals",cluster.spec)) {
+    #   data2=obsS_gs
+    # } else {
       data2=list(covariances=obsS_gs,means=mean_gs)
-    }
+    # }
   }
 
   N=sum(N_gs)
@@ -227,1015 +254,222 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     }
   }
 
-  overview=matrix(0,nsclust[2]-nsclust[1]+1,7)
+  if(length(nsclust)>2){ # nsclust needs to be of length two
+    cat("You specified more than two numbers of clusters. The minimum and maximum of these numbers will be used.")
+    cat("\n")
+    nsclust=c(min(nsclust),max(nsclust))
+  }
+  if(length(nsclust)==2){
+    if(nsclust[2]>ngroup){
+      cat("Note: the number of clusters cannot exceed the number of groups.")
+      cat("\n")
+      nsclust[2]=ngroup
+    }
+  } else if(length(nsclust)==1){
+    if(nsclust[1]>ngroup){
+      cat("Note: the number of clusters cannot exceed the number of groups.")
+      cat("\n")
+      nsclust[1]=ngroup
+    }
+    nsclust=c(nsclust,nsclust)
+  }
+
+
+  if(sum(rescov)>nvar){
+    if(length(cluster.spec)==2 && is.element("loadings",cluster.spec) && is.element("residuals",cluster.spec)){
+      # check specification of residual covariances (symmetry and diagonal)
+      rescov=ceiling((rescov+t(rescov))/2)
+      diag(rescov)=rep(1,nvar)
+    } else {
+      # residual covariance not (yet) supported
+      rescov=0
+    }
+  }
+
+  if(parcomp==1){
+    # Set up the parallel processing:
+    # Detect the amount of cores on the machine
+    cores <- detectCores()
+
+    # Create a cluster that links the different cores, to perform
+    # tasks in parallel (in the different cores at the same time),
+    # the cluster ensures the different tasks can communicate with each other.
+    # at least 2 (the number specified by 'freecores') of your total cores are not used to ensure system stability and
+    # being able to still do other processes on your machine
+    cl <- makeCluster(cores - freecores)
+
+    # Activate the cluster to be the backend of the parallel
+    # operations of the foreach function
+    registerDoParallel(cl)
+  }
+
   MMGFAsolutions=matrix(list(NA),nrow = 1, ncol=nsclust[2]-nsclust[1]+1)
   if (length(cluster.spec)==1 && cluster.spec[1]=="loadings"){
-    for(nclust in nsclust[1]:nsclust[2]){
-      if(nclust==1){
-        #print(paste("Fitting MMG-FA with",nclust,"cluster ..."),quote=FALSE)
-        cat(paste("Fitting MMG-FA with",nclust,"cluster ..."))
-        cat("\n")
-        output_nclust <- mixmgfa_loadings(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
+    if(parcomp==1){
+      MMGFAsolutions <- foreach(nclust = nsclust[1]:nsclust[2], .packages=c("mixmgfa","GPArotation")) %dopar% {
+        outputnclust2 <- do_mixmgfa_loadings(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
+        return(outputnclust2)
       }
-      else {
-        #print(paste("Fitting MMG-FA with",nclust,"clusters ..."),quote=FALSE)
-        cat(paste("Fitting MMG-FA with",nclust,"clusters ..."))
-        cat("\n")
-        if (nclust==G){
-          output_nclust <- mixmgfa_loadings(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
-        }
-        else {
-          output_nclust <- mixmgfa_loadings(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = nruns,design=design, preselect=preselect)
-        }
+      stopCluster(cl)
+    } else {
+      for(nclust in nsclust[1]:nsclust[2]){
+        MMGFAsolutions[[nclust-nsclust[1]+1]]<- do_mixmgfa_loadings(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
       }
-      loglik=output_nclust$bestloglik
-      nrpars=output_nclust$nrpars
-      convergence=output_nclust$convergence>0
-      overview[nclust-nsclust[1]+1,]=cbind(nclust,loglik,nrpars,-2*loglik+nrpars*log(N),-2*loglik+nrpars*log(G),convergence,output_nclust$nractivatedconstraints)
-      if(sum(design)==0 && rotation!=0){
-        for(k in 1:nclust){
-          if(rotation=="varimax"){
-            rot<-GPForth(output_nclust$Lambda_ks[[k]], method="varimax")
-          } else if(rotation=="oblimin"){
-            rot<-GPFoblq(output_nclust$Lambda_ks[[k]], method="oblimin")
-          } else if(rotation=="target"){
-            rot<-GPFoblq(output_nclust$Lambda_ks[[k]], method="pst",methodArgs =list(W=targetW,Target=targetT))
-          }
-          rotatedloadings=rot$loadings
-          if(rotation=="varimax"){
-            T_matrix=rot$Th
-          } else {
-            T_matrix=t(solve(rot$Th))
-          }
-          if(rotation!="target"){ # reflect and permute in case of rotated EFA (but not target rotation)
-            if(k==1){
-              # ssq=colSums(rotatedloadings^2)
-              # perm<-sort(ssq,decreasing=TRUE,index.return=TRUE)
-              # perm<-perm$ix
-              # rotatedloadings=rotatedloadings[,perm]
-              strongloadcutoff=mean(apply(abs(rotatedloadings),2,max))/2
-              strongloadind=which(abs(rotatedloadings)>=strongloadcutoff)
-              strongload=matrix(0,nrow=nvar,ncol=nfactors)
-              strongload[strongloadind]=rotatedloadings[strongloadind]
-              toreflect=colSums(strongload>0)<colSums(strongload<0)
-              refl=matrix(1,nrow=1,ncol=nfactors)
-              refl[toreflect]=-1
-              rotatedloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*rotatedloadings
-              rotatedloadings_cl1=rotatedloadings
-            } else {
-              agreem_cl1=matrix(0,nfactors,nfactors)
-              agreem_cl1_refl=agreem_cl1
-              for(q in 1:nfactors){
-                load=rotatedloadings[,q,drop=FALSE]
-                for(q1 in 1:nfactors){
-                  agreem_cl1[q,q1]=sum(((load)-rotatedloadings_cl1[,q1])^2)
-                  agreem_cl1_refl[q,q1]=sum(((-1*load)-rotatedloadings_cl1[,q1])^2)
-                }
-              }
-              mi=apply(agreem_cl1,2,sort)
-              mi_ind=apply(agreem_cl1,2,order)
-              mi_refl=apply(agreem_cl1_refl,2,sort)
-              mi_refl_ind=apply(agreem_cl1_refl,2,order)
-              refl=matrix(1,nrow=1,ncol=nfactors)
-              refl[mi[1,]>mi_refl[1,]]=-1
-              perm=mi_ind[1,]
-              perm[refl==-1]=mi_refl_ind[1,refl==-1]
-              if (length(unique(perm))<length(perm)){
-                nonuniq=which(tabulate(perm)>1)
-                missing=which(is.element(1:nfactors,perm)==FALSE)
-                #perm[is.element(perm,nonuniq)]
-                for(nu in 1:length(nonuniq)){
-                  fnu=nonuniq[nu]
-                  pos=which(perm==fnu)
-                  pos=pos[order(mi[1,perm==fnu])]
-                  perm[pos[2:length(pos)]]=0
-                }
-                perm[perm==0]=missing # replacement is not optimized at this time
-              }
-              rotatedloadings=rotatedloadings[,perm]
-              rotatedloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*rotatedloadings
-            }
-            Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-          }
-          output_nclust$Lambda_ks[[k]]=rotatedloadings
-
-          invT=solve(T_matrix)
-          for(g in 1:G){ # counter-rotate all corresponding sets of factor (co)variances
-            crotatedFcov=invT%*%output_nclust$Phi_gks[[g,k]]%*%t(invT)
-            if(k>1 && rotation!="target"){
-              crotatedFcov=crotatedFcov[perm,perm]
-            }
-            if(rotation!="target"){
-              crotatedFcov=Rm*crotatedFcov*t(Rm)
-            }
-            output_nclust$Phi_gks[[g,k]]=crotatedFcov
-          }
-        }
-      }
-      if(sum(design)>0 || nfactors==1 || (rotation=="target" & sum(targetT==0 & targetW==1)==sum(targetW))){ # in case of CFA or zero-approximating target rotation, only reflect
-        for(k in 1:nclust){
-          loadings=output_nclust$Lambda_ks[[k]]
-          if(k==1){
-            if(rotation=="target"){
-              strongloadcutoff=mean(apply(abs(loadings),2,max))/2
-              strongloadind=which(abs(loadings)>=strongloadcutoff)
-              strongload=matrix(0,nrow=nvar,ncol=nfactors)
-              strongload[strongloadind]=loadings[strongloadind]
-            } else {
-              strongload=loadings # for CFA, all non-zero loadings are considered strong loadings
-            }
-            toreflect=colSums(strongload>0)<colSums(strongload<0)
-            refl=matrix(1,nrow=1,ncol=nfactors)
-            refl[toreflect]=-1
-            reflloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*loadings
-            reflloadings_cl1=reflloadings
-          } else {
-            agreem_cl1=matrix(0,nfactors,nfactors)
-            agreem_cl1_refl=agreem_cl1
-            for(q in 1:nfactors){
-              load=loadings[,q,drop=FALSE]
-              agreem_cl1[q,q]=sum(((load)-reflloadings_cl1[,q])^2)
-              agreem_cl1_refl[q,q]=sum(((-1*load)-reflloadings_cl1[,q])^2)
-            }
-            refl=matrix(1,nrow=1,ncol=nfactors)
-            refl[diag(agreem_cl1)>diag(agreem_cl1_refl)]=-1
-            reflloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*loadings
-          }
-          output_nclust$Lambda_ks[[k]]=reflloadings
-
-          Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-          for(g in 1:G){ # reflect all corresponding sets of factor (co)variances
-            Fcov=output_nclust$Phi_gks[[g,k]]
-            Fcov=Rm*Fcov*t(Rm)
-            output_nclust$Phi_gks[[g,k]]=Fcov
-          }
-        }
-      }
-      prefix="Cluster"
-      suffix=seq(1:nclust)
-      colnames(output_nclust$Lambda_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$Lambda_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$Phi_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$z_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$pi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      if(is.null(grouplabels)==FALSE){
-        rownames(output_nclust$Psi_gs)<-grouplabels
-        rownames(output_nclust$z_gks)<-grouplabels
-        rownames(output_nclust$mu_gs)<-grouplabels
-        rownames(output_nclust$Phi_gks)<-grouplabels
-      }
-      if(is.null(varlabels)==FALSE){
-        colnames(output_nclust$mu_gs)<-varlabels
-        for(k in 1:nclust){
-          rownames(output_nclust$Lambda_ks[[k]])<-varlabels
-        }
-        for(g in 1:G){
-          colnames(output_nclust$Psi_gs[[g]])<-varlabels
-          rownames(output_nclust$Psi_gs[[g]])<-varlabels
-        }
-      }
-      prefix="Factor"
-      suffix=seq(1:nfactors)
-      factorlabels=noquote(paste(prefix,suffix,sep="_"))
-      for(k in 1:nclust){
-        colnames(output_nclust$Lambda_ks[[k]])<-factorlabels
-        for(g in 1:G){
-          colnames(output_nclust$Phi_gks[[g,k]])<-factorlabels
-          rownames(output_nclust$Phi_gks[[g,k]])<-factorlabels
-        }
-      }
-      output_nclust2<-list(clustermemberships=output_nclust$z_gks,clusterproportions=output_nclust$pi_ks,clusterspecific.loadings=output_nclust$Lambda_ks,group.and.clusterspecific.factorcovariances=output_nclust$Phi_gks,groupspecific.uniquevariances=output_nclust$Psi_gs,groupspecific.means=mean_gs)
-
-      MMGFAsolutions[[nclust-nsclust[1]+1]]=output_nclust2
     }
   }
   if (length(cluster.spec)==1 && cluster.spec=="intercepts"){
-    for(nclust in nsclust[1]:nsclust[2]){
-      if(nclust==1){
-        cat(paste("Fitting MMG-FA with",nclust,"cluster ..."))
-        cat("\n")
-        output_nclust <- mixmgfa_intercepts(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
+    if(parcomp==1){
+      MMGFAsolutions <- foreach(nclust = nsclust[1]:nsclust[2], .packages=c("mixmgfa","GPArotation")) %dopar% {
+        outputnclust2 <- do_mixmgfa_intercepts(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
+        return(outputnclust2)
       }
-      else {
-        cat(paste("Fitting MMG-FA with",nclust,"clusters ..."))
-        cat("\n")
-        if(nclust==G){
-          output_nclust <- mixmgfa_intercepts(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
-        }
-        else{
-          output_nclust <- mixmgfa_intercepts(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = nruns,design=design, preselect=preselect)
-        }
+      stopCluster(cl)
+    } else {
+      for(nclust in nsclust[1]:nsclust[2]){
+        MMGFAsolutions[[nclust-nsclust[1]+1]] <- do_mixmgfa_intercepts(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
       }
-      loglik=output_nclust$bestloglik
-      nrpars=output_nclust$nrpars
-      convergence=output_nclust$convergence>0
-      overview[nclust-nsclust[1]+1,]=cbind(nclust,loglik,nrpars,-2*loglik+nrpars*log(N),-2*loglik+nrpars*log(G),convergence,output_nclust$nractivatedconstraints)
-      if(sum(design)==0 && rotation!=0){
-        if(rotation=="varimax"){
-          rot<-GPForth(output_nclust$Lambda, method="varimax")
-        } else if(rotation=="oblimin"){
-          rot<-GPFoblq(output_nclust$Lambda, method="oblimin")
-        } else if(rotation=="target"){
-          rot<-GPFoblq(output_nclust$Lambda, method="pst",methodArgs =list(W=targetW,Target=targetT))
-        }
-        rotatedloadings=rot$loadings
-        if(rotation=="varimax"){
-          T_matrix=rot$Th
-        } else {
-          T_matrix=t(solve(rot$Th))
-        }
-        if(rotation!="target"){ # reflect in case of rotated EFA (not for target rotation)
-          strongloadcutoff=mean(apply(abs(rotatedloadings),2,max))/2
-          strongloadind=which(abs(rotatedloadings)>=strongloadcutoff)
-          strongload=matrix(0,nrow=nvar,ncol=nfactors)
-          strongload[strongloadind]=rotatedloadings[strongloadind]
-          toreflect=colSums(strongload>0)<colSums(strongload<0)
-          refl=matrix(1,nrow=1,ncol=nfactors)
-          refl[toreflect]=-1
-          rotatedloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*rotatedloadings
-          rotatedloadings_cl1=rotatedloadings
-          Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-        }
-        output_nclust$Lambda=rotatedloadings
-
-        invT=solve(T_matrix)
-        for(g in 1:G){ # counter-rotate all sets of factor (co)variances and factor means
-          crotatedFcov=invT%*%output_nclust$Phi_gs[[g]]%*%t(invT)
-          if(rotation!="target"){
-            crotatedFcov=Rm*crotatedFcov*t(Rm)
-          }
-          output_nclust$Phi_gs[[g]]=crotatedFcov
-          for(k in 1:nclust){
-            crotatedFmeans=output_nclust$alpha_gks[[g,k]]%*%t(invT)
-            if(rotation!="target"){
-              crotatedFmeans=refl*crotatedFmeans
-            }
-            output_nclust$alpha_gks[[g,k]]=crotatedFmeans
-          }
-        }
-      }
-      if(sum(design)>0 || nfactors==1 || (rotation=="target" & sum(targetT==0 & targetW==1)==sum(targetW))){ # in case of CFA or zero-approximating target rotation, only reflect
-        loadings=output_nclust$Lambda
-        if(rotation=="target"){
-          strongloadcutoff=mean(apply(abs(loadings),2,max))/2
-          strongloadind=which(abs(loadings)>=strongloadcutoff)
-          strongload=matrix(0,nrow=nvar,ncol=nfactors)
-          strongload[strongloadind]=loadings[strongloadind]
-        } else {
-          strongload=loadings # for CFA, all non-zero loadings are considered strong loadings
-        }
-        toreflect=colSums(strongload>0)<colSums(strongload<0)
-        refl=matrix(1,nrow=1,ncol=nfactors)
-        refl[toreflect]=-1
-        reflloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*loadings
-        reflloadings_cl1=reflloadings
-        output_nclust$Lambda=reflloadings
-
-        Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-        for(g in 1:G){ # reflect all corresponding sets of factor (co)variances and factor means
-          Fcov=output_nclust$Phi_gs[[g]]
-          Fcov=Rm*Fcov*t(Rm)
-          output_nclust$Phi_gs[[g]]=Fcov
-          for(k in 1:nclust){
-            Fmeans=output_nclust$alpha_gks[[g,k]]
-            Fmeans=refl*Fmeans
-            output_nclust$alpha_gks[[g,k]]=Fmeans
-          }
-        }
-      }
-
-      prefix="Cluster"
-      suffix=seq(1:nclust)
-      rownames(output_nclust$tau_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$alpha_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$z_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$pi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      if(is.null(grouplabels)==FALSE){
-        rownames(output_nclust$Psi_gs)<-grouplabels
-        rownames(output_nclust$z_gks)<-grouplabels
-        rownames(output_nclust$alpha_gks)<-grouplabels
-        rownames(output_nclust$Phi_gs)<-grouplabels
-      }
-      if(is.null(varlabels)==FALSE){
-        colnames(output_nclust$tau_ks)<-varlabels
-        rownames(output_nclust$Lambda)<-varlabels
-        for(g in 1:G){
-          colnames(output_nclust$Psi_gs[[g]])<-varlabels
-          rownames(output_nclust$Psi_gs[[g]])<-varlabels
-        }
-      }
-      prefix="Factor"
-      suffix=seq(1:nfactors)
-      factorlabels=noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$Lambda)<-factorlabels
-      for(g in 1:G){
-        colnames(output_nclust$Phi_gs[[g]])<-factorlabels
-        rownames(output_nclust$Phi_gs[[g]])<-factorlabels
-        for(k in 1:nclust){
-          colnames(output_nclust$alpha_gks[[g,k]])<-factorlabels
-        }
-      }
-      output_nclust2<-list(clustermemberships=output_nclust$z_gks,clusterproportions=output_nclust$pi_ks,invariant.loadings=output_nclust$Lambda,groupspecific.factorcovariances=output_nclust$Phi_gs,groupspecific.uniquevariances=output_nclust$Psi_gs,clusterspecific.intercepts=output_nclust$tau_ks,group.and.clusterspecific.factormeans=output_nclust$alpha_gks)
-
-      MMGFAsolutions[[nclust-nsclust[1]+1]]=output_nclust2
     }
   }
   if (length(cluster.spec)==1 && cluster.spec=="residuals"){
-    for(nclust in nsclust[1]:nsclust[2]){
-      if(nclust==1){
-        cat(paste("Fitting MMG-FA with",nclust,"cluster ..."))
-        cat("\n")
-        output_nclust <- mixmgfa_residuals(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
+    if(parcomp==1){
+      MMGFAsolutions <- foreach(nclust = nsclust[1]:nsclust[2], .packages=c("mixmgfa","GPArotation")) %dopar% {
+        outputnclust2 <- do_mixmgfa_residuals(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
+        return(outputnclust2)
       }
-      else {
-        cat(paste("Fitting MMG-FA with",nclust,"clusters ..."))
-        cat("\n")
-        if(nclust==G){
-          output_nclust <- mixmgfa_residuals(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
-        }
-        else{
-          output_nclust <- mixmgfa_residuals(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = nruns,design=design, preselect=preselect)
-        }
+      stopCluster(cl)
+    } else {
+      for(nclust in nsclust[1]:nsclust[2]){
+        MMGFAsolutions[[nclust-nsclust[1]+1]] <- do_mixmgfa_residuals(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
       }
-      loglik=output_nclust$bestloglik
-      nrpars=output_nclust$nrpars
-      convergence=output_nclust$convergence>0
-      overview[nclust-nsclust[1]+1,]=cbind(nclust,loglik,nrpars,-2*loglik+nrpars*log(N),-2*loglik+nrpars*log(G),convergence,output_nclust$nractivatedconstraints)
-      if(sum(design)==0 && rotation!=0){
-        if(rotation=="varimax"){
-          rot<-GPForth(output_nclust$Lambda, method="varimax")
-        } else if(rotation=="oblimin"){
-          rot<-GPFoblq(output_nclust$Lambda, method="oblimin")
-        } else if(rotation=="target"){
-          rot<-GPFoblq(output_nclust$Lambda, method="pst",methodArgs =list(W=targetW,Target=targetT))
-        }
-        rotatedloadings=rot$loadings
-        if(rotation=="varimax"){
-          T_matrix=rot$Th
-        } else {
-          T_matrix=t(solve(rot$Th))
-        }
-        if(rotation!="target"){ # reflect in case of rotated EFA (not for target rotation)
-          strongloadcutoff=mean(apply(abs(rotatedloadings),2,max))/2
-          strongloadind=which(abs(rotatedloadings)>=strongloadcutoff)
-          strongload=matrix(0,nrow=nvar,ncol=nfactors)
-          strongload[strongloadind]=rotatedloadings[strongloadind]
-          toreflect=colSums(strongload>0)<colSums(strongload<0)
-          refl=matrix(1,nrow=1,ncol=nfactors)
-          refl[toreflect]=-1
-          rotatedloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*rotatedloadings
-          rotatedloadings_cl1=rotatedloadings
-          Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-        }
-        output_nclust$Lambda=rotatedloadings
-
-        invT=solve(T_matrix)
-        for(g in 1:G){ # counter-rotate all corresponding sets of factor (co)variances
-          crotatedFcov=invT%*%output_nclust$Phi_gs[[g]]%*%t(invT)
-          crotatedFmeans=output_nclust$alpha_gs[[g]]%*%t(invT)
-          if(rotation!="target"){
-            crotatedFcov=Rm*crotatedFcov*t(Rm)
-            crotatedFmeans=refl*crotatedFmeans
-          }
-          output_nclust$Phi_gs[[g]]=crotatedFcov
-          output_nclust$alpha_gs[[g]]=crotatedFmeans
-        }
-      }
-      if(sum(design)>0 || nfactors==1 || (rotation=="target" & sum(targetT==0 & targetW==1)==sum(targetW))){ # in case of CFA or zero-approximating target rotation, only reflect
-        loadings=output_nclust$Lambda
-        if(rotation=="target"){
-          strongloadcutoff=mean(apply(abs(loadings),2,max))/2
-          strongloadind=which(abs(loadings)>=strongloadcutoff)
-          strongload=matrix(0,nrow=nvar,ncol=nfactors)
-          strongload[strongloadind]=loadings[strongloadind]
-        } else {
-          strongload=loadings # for CFA, all non-zero loadings are considered strong loadings
-        }
-        toreflect=colSums(strongload>0)<colSums(strongload<0)
-        refl=matrix(1,nrow=1,ncol=nfactors)
-        refl[toreflect]=-1
-        reflloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*loadings
-        reflloadings_cl1=reflloadings
-        output_nclust$Lambda=reflloadings
-
-        Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-        for(g in 1:G){ # reflect all corresponding sets of factor (co)variances and factor means
-          Fcov=output_nclust$Phi_gs[[g]]
-          Fmeans=output_nclust$alpha_gs[[g]]
-          Fcov=Rm*Fcov*t(Rm)
-          Fmeans=refl*Fmeans
-          output_nclust$Phi_gs[[g]]=Fcov
-          output_nclust$alpha_gs[[g]]=Fmeans
-        }
-      }
-
-      prefix="Cluster"
-      suffix=seq(1:nclust)
-      colnames(output_nclust$Psi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$Psi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$z_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$pi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      if(is.null(grouplabels)==FALSE){
-        rownames(output_nclust$z_gks)<-grouplabels
-        rownames(output_nclust$alpha_gs)<-grouplabels
-        rownames(output_nclust$Phi_gs)<-grouplabels
-      }
-      if(is.null(varlabels)==FALSE){
-        colnames(output_nclust$tau)<-varlabels
-        rownames(output_nclust$Lambda)<-varlabels
-        for(k in 1:nclust){
-          colnames(output_nclust$Psi_ks[[k]])<-varlabels
-          rownames(output_nclust$Psi_ks[[k]])<-varlabels
-        }
-      }
-      prefix="Factor"
-      suffix=seq(1:nfactors)
-      factorlabels=noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$Lambda)<-factorlabels
-      for(g in 1:G){
-        colnames(output_nclust$Phi_gs[[g]])<-factorlabels
-        rownames(output_nclust$Phi_gs[[g]])<-factorlabels
-        colnames(output_nclust$alpha_gs[[g]])<-factorlabels
-      }
-      output_nclust2<-list(clustermemberships=output_nclust$z_gks,clusterproportions=output_nclust$pi_ks,invariant.loadings=output_nclust$Lambda,groupspecific.factorcovariances=output_nclust$Phi_gs,clusterspecific.uniquevariances=output_nclust$Psi_ks,invariant.intercepts=output_nclust$tau,groupspecific.factormeans=output_nclust$alpha_gs)
-
-      MMGFAsolutions[[nclust-nsclust[1]+1]]=output_nclust2
     }
   }
   if (is.element("loadings",cluster.spec) & is.element("intercepts",cluster.spec) & is.element("residuals",cluster.spec)==FALSE){
-    for(nclust in nsclust[1]:nsclust[2]){
-      if(nclust==1){
-        cat(paste("Fitting MMG-FA with",nclust,"cluster ..."))
-        cat("\n")
-        output_nclust <- mixmgfa_loadingsintercepts(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
+    if(parcomp==1){
+      MMGFAsolutions <- foreach(nclust = nsclust[1]:nsclust[2], .packages=c("mixmgfa","GPArotation")) %dopar% {
+        outputnclust2 <- do_mixmgfa_loadingsintercepts(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
+        return(outputnclust2)
       }
-      else {
-        cat(paste("Fitting MMG-FA with",nclust,"clusters ..."))
-        cat("\n")
-        if(nclust==G){
-          output_nclust <- mixmgfa_loadingsintercepts(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
-        }
-        else{
-          output_nclust <- mixmgfa_loadingsintercepts(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = nruns,design=design, preselect=preselect)
-        }
+      stopCluster(cl)
+    } else {
+      for(nclust in nsclust[1]:nsclust[2]){
+        MMGFAsolutions[[nclust-nsclust[1]+1]] <- do_mixmgfa_loadingsintercepts(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
       }
-      loglik=output_nclust$bestloglik
-      nrpars=output_nclust$nrpars
-      convergence=output_nclust$convergence>0
-      overview[nclust-nsclust[1]+1,]=cbind(nclust,loglik,nrpars,-2*loglik+nrpars*log(N),-2*loglik+nrpars*log(G),convergence,output_nclust$nractivatedconstraints)
-      if(sum(design)==0 && rotation!=0){
-        for(k in 1:nclust){
-          if(rotation=="varimax"){
-            rot<-GPForth(output_nclust$Lambda_ks[[k]], method="varimax")
-          } else if(rotation=="oblimin"){
-            rot<-GPFoblq(output_nclust$Lambda_ks[[k]], method="oblimin")
-          } else if(rotation=="target"){
-            rot<-GPFoblq(output_nclust$Lambda_ks[[k]], method="pst",methodArgs =list(W=targetW,Target=targetT))
-          }
-          rotatedloadings=rot$loadings
-          if(rotation=="varimax"){
-            T_matrix=rot$Th
-          } else {
-            T_matrix=t(solve(rot$Th))
-          }
-          if(rotation!="target"){
-            if(k==1){
-              # ssq=colSums(rotatedloadings^2)
-              # perm<-sort(ssq,decreasing=TRUE,index.return=TRUE)
-              # perm<-perm$ix
-              # rotatedloadings=rotatedloadings[,perm]
-              strongloadcutoff=mean(apply(abs(rotatedloadings),2,max))/2
-              strongloadind=which(abs(rotatedloadings)>=strongloadcutoff)
-              strongload=matrix(0,nrow=nvar,ncol=nfactors)
-              strongload[strongloadind]=rotatedloadings[strongloadind]
-              toreflect=colSums(strongload>0)<colSums(strongload<0)
-              refl=matrix(1,nrow=1,ncol=nfactors)
-              refl[toreflect]=-1
-              rotatedloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*rotatedloadings
-              rotatedloadings_cl1=rotatedloadings
-            } else {
-              agreem_cl1=matrix(0,nfactors,nfactors)
-              agreem_cl1_refl=agreem_cl1
-              for(q in 1:nfactors){
-                load=rotatedloadings[,q,drop=FALSE]
-                for(q1 in 1:nfactors){
-                  agreem_cl1[q,q1]=sum(((load)-rotatedloadings_cl1[,q1])^2)
-                  agreem_cl1_refl[q,q1]=sum(((-1*load)-rotatedloadings_cl1[,q1])^2)
-                }
-              }
-              mi=apply(agreem_cl1,2,sort)
-              mi_ind=apply(agreem_cl1,2,order)
-              mi_refl=apply(agreem_cl1_refl,2,sort)
-              mi_refl_ind=apply(agreem_cl1_refl,2,order)
-              refl=matrix(1,nrow=1,ncol=nfactors)
-              refl[mi[1,]>mi_refl[1,]]=-1
-              perm=mi_ind[1,]
-              perm[refl==-1]=mi_refl_ind[1,refl==-1]
-              if (length(unique(perm))<length(perm)){
-                nonuniq=which(tabulate(perm)>1)
-                missing=which(is.element(1:nfactors,perm)==FALSE)
-                #perm[is.element(perm,nonuniq)]
-                for(nu in 1:length(nonuniq)){
-                  fnu=nonuniq[nu]
-                  pos=which(perm==fnu)
-                  pos=pos[order(mi[1,perm==fnu])]
-                  perm[pos[2:length(pos)]]=0
-                }
-                perm[perm==0]=missing # replacement is not optimized at this time
-              }
-              rotatedloadings=rotatedloadings[,perm]
-              rotatedloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*rotatedloadings
-            }
-            Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-          }
-          output_nclust$Lambda_ks[[k]]=rotatedloadings
-
-          invT=solve(T_matrix)
-          for(g in 1:G){ # counter-rotate all sets of factor (co)variances and factor means
-            crotatedFcov=invT%*%output_nclust$Phi_gks[[g,k]]%*%t(invT)
-            crotatedFmeans=output_nclust$alpha_gks[[g,k]]%*%t(invT)
-            if(k>1 && rotation!="target"){
-              crotatedFcov=crotatedFcov[perm,perm]
-              crotatedFmeans=crotatedFmeans[,perm]
-            }
-            if(rotation!="target"){
-              crotatedFcov=Rm*crotatedFcov*t(Rm)
-              crotatedFmeans=refl*crotatedFmeans
-            }
-            output_nclust$Phi_gks[[g,k]]=crotatedFcov
-            output_nclust$alpha_gks[[g,k]]=crotatedFmeans
-          }
-        }
-      }
-      if(sum(design)>0 || nfactors==1 || (rotation=="target" & sum(targetT==0 & targetW==1)==sum(targetW))){ # in case of CFA or zero-approximating target rotation, only reflect
-        for(k in 1:nclust){
-          loadings=output_nclust$Lambda_ks[[k]]
-          if(k==1){
-            if(rotation=="target"){
-              strongloadcutoff=mean(apply(abs(loadings),2,max))/2
-              strongloadind=which(abs(loadings)>=strongloadcutoff)
-              strongload=matrix(0,nrow=nvar,ncol=nfactors)
-              strongload[strongloadind]=loadings[strongloadind]
-            } else {
-              strongload=loadings # for CFA, all non-zero loadings are considered strong loadings
-            }
-            toreflect=colSums(strongload>0)<colSums(strongload<0)
-            refl=matrix(1,nrow=1,ncol=nfactors)
-            refl[toreflect]=-1
-            reflloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*loadings
-            reflloadings_cl1=reflloadings
-          } else {
-            agreem_cl1=matrix(0,nfactors,nfactors)
-            agreem_cl1_refl=agreem_cl1
-            for(q in 1:nfactors){
-              load=loadings[,q,drop=FALSE]
-              agreem_cl1[q,q]=sum(((load)-reflloadings_cl1[,q])^2)
-              agreem_cl1_refl[q,q]=sum(((-1*load)-reflloadings_cl1[,q])^2)
-            }
-            refl=matrix(1,nrow=1,ncol=nfactors)
-            refl[diag(agreem_cl1)>diag(agreem_cl1_refl)]=-1
-            reflloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*loadings
-          }
-          output_nclust$Lambda_ks[[k]]=reflloadings
-
-          Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-          for(g in 1:G){ # reflect all corresponding sets of factor (co)variances and factor means
-            Fcov=output_nclust$Phi_gks[[g,k]]
-            Fmeans=output_nclust$alpha_gks[[g,k]]
-            Fcov=Rm*Fcov*t(Rm)
-            Fmeans=refl*Fmeans
-            output_nclust$Phi_gks[[g,k]]=Fcov
-            output_nclust$alpha_gks[[g,k]]=Fmeans
-          }
-        }
-      }
-      prefix="Cluster"
-      suffix=seq(1:nclust)
-      colnames(output_nclust$Lambda_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$Lambda_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      rownames(output_nclust$tau_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$alpha_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$Phi_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$z_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$pi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      if(is.null(grouplabels)==FALSE){
-        rownames(output_nclust$Psi_gs)<-grouplabels
-        rownames(output_nclust$z_gks)<-grouplabels
-        rownames(output_nclust$alpha_gks)<-grouplabels
-        rownames(output_nclust$Phi_gks)<-grouplabels
-      }
-      if(is.null(varlabels)==FALSE){
-        colnames(output_nclust$tau_ks)<-varlabels
-        for(k in 1:nclust){
-          rownames(output_nclust$Lambda_ks[[k]])<-varlabels
-        }
-        for(g in 1:G){
-          colnames(output_nclust$Psi_gs[[g]])<-varlabels
-          rownames(output_nclust$Psi_gs[[g]])<-varlabels
-        }
-      }
-      prefix="Factor"
-      suffix=seq(1:nfactors)
-      factorlabels=noquote(paste(prefix,suffix,sep="_"))
-      for(k in 1:nclust){
-        colnames(output_nclust$Lambda_ks[[k]])<-factorlabels
-        for(g in 1:G){
-          colnames(output_nclust$alpha_gks[[g,k]])<-factorlabels
-          colnames(output_nclust$Phi_gks[[g,k]])<-factorlabels
-          rownames(output_nclust$Phi_gks[[g,k]])<-factorlabels
-        }
-      }
-      output_nclust2<-list(clustermemberships=output_nclust$z_gks,clusterproportions=output_nclust$pi_ks,clusterspecific.loadings=output_nclust$Lambda_ks,group.and.clusterspecific.factorcovariances=output_nclust$Phi_gks,groupspecific.uniquevariances=output_nclust$Psi_gs,clusterspecific.intercepts=output_nclust$tau_ks,group.and.clusterspecific.factormeans=output_nclust$alpha_gks)
-
-      MMGFAsolutions[[nclust-nsclust[1]+1]]=output_nclust2
     }
   }
   if (is.element("loadings",cluster.spec) & is.element("intercepts",cluster.spec) & is.element("residuals",cluster.spec)){
-    for(nclust in nsclust[1]:nsclust[2]){
-      if(nclust==1){
-        cat(paste("Fitting MMG-FA with",nclust,"cluster ..."))
-        cat("\n")
-        output_nclust <- mixmgfa_loadingsinterceptsresiduals(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
+    if(parcomp==1){
+      MMGFAsolutions <- foreach(nclust = nsclust[1]:nsclust[2], .packages=c("mixmgfa","GPArotation")) %dopar% {
+        outputnclust2 <- do_mixmgfa_loadingsinterceptsresiduals(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
+        return(outputnclust2)
       }
-      else {
-        cat(paste("Fitting MMG-FA with",nclust,"clusters ..."))
-        cat("\n")
-        if(nclust==G){
-          output_nclust <- mixmgfa_loadingsinterceptsresiduals(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
-        }
-        else{
-          output_nclust <- mixmgfa_loadingsinterceptsresiduals(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = nruns,design=design, preselect=preselect)
-        }
+      stopCluster(cl)
+    } else {
+      for(nclust in nsclust[1]:nsclust[2]){
+        MMGFAsolutions[[nclust-nsclust[1]+1]] <- do_mixmgfa_loadingsinterceptsresiduals(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
       }
-      loglik=output_nclust$bestloglik
-      nrpars=output_nclust$nrpars
-      convergence=output_nclust$convergence>0
-      overview[nclust-nsclust[1]+1,]=cbind(nclust,loglik,nrpars,-2*loglik+nrpars*log(N),-2*loglik+nrpars*log(G),convergence,output_nclust$nractivatedconstraints)
-      if(sum(design)==0 && rotation!=0){
-        for(k in 1:nclust){
-          if(rotation=="varimax"){
-            rot<-GPForth(output_nclust$Lambda_ks[[k]], method="varimax")
-          } else if(rotation=="oblimin"){
-            rot<-GPFoblq(output_nclust$Lambda_ks[[k]], method="oblimin")
-          } else if(rotation=="target"){
-            rot<-GPFoblq(output_nclust$Lambda_ks[[k]], method="pst",methodArgs =list(W=targetW,Target=targetT))
-          }
-          rotatedloadings=rot$loadings
-          if(rotation=="varimax"){
-            T_matrix=rot$Th
-          } else {
-            T_matrix=t(solve(rot$Th))
-          }
-          if(rotation!="target"){
-            if(k==1){
-              # ssq=colSums(rotatedloadings^2)
-              # perm<-sort(ssq,decreasing=TRUE,index.return=TRUE)
-              # perm<-perm$ix
-              # rotatedloadings=rotatedloadings[,perm]
-              strongloadcutoff=mean(apply(abs(rotatedloadings),2,max))/2
-              strongloadind=which(abs(rotatedloadings)>=strongloadcutoff)
-              strongload=matrix(0,nrow=nvar,ncol=nfactors)
-              strongload[strongloadind]=rotatedloadings[strongloadind]
-              toreflect=colSums(strongload>0)<colSums(strongload<0)
-              refl=matrix(1,nrow=1,ncol=nfactors)
-              refl[toreflect]=-1
-              rotatedloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*rotatedloadings
-              rotatedloadings_cl1=rotatedloadings
-            } else {
-              agreem_cl1=matrix(0,nfactors,nfactors)
-              agreem_cl1_refl=agreem_cl1
-              for(q in 1:nfactors){
-                load=rotatedloadings[,q,drop=FALSE]
-                for(q1 in 1:nfactors){
-                  agreem_cl1[q,q1]=sum(((load)-rotatedloadings_cl1[,q1])^2)
-                  agreem_cl1_refl[q,q1]=sum(((-1*load)-rotatedloadings_cl1[,q1])^2)
-                }
-              }
-              mi=apply(agreem_cl1,2,sort)
-              mi_ind=apply(agreem_cl1,2,order)
-              mi_refl=apply(agreem_cl1_refl,2,sort)
-              mi_refl_ind=apply(agreem_cl1_refl,2,order)
-              refl=matrix(1,nrow=1,ncol=nfactors)
-              refl[mi[1,]>mi_refl[1,]]=-1
-              perm=mi_ind[1,]
-              perm[refl==-1]=mi_refl_ind[1,refl==-1]
-              if (length(unique(perm))<length(perm)){
-                nonuniq=which(tabulate(perm)>1)
-                missing=which(is.element(1:nfactors,perm)==FALSE)
-                #perm[is.element(perm,nonuniq)]
-                for(nu in 1:length(nonuniq)){
-                  fnu=nonuniq[nu]
-                  pos=which(perm==fnu)
-                  pos=pos[order(mi[1,perm==fnu])]
-                  perm[pos[2:length(pos)]]=0
-                }
-                perm[perm==0]=missing # replacement is not optimized at this time
-              }
-              rotatedloadings=rotatedloadings[,perm]
-              rotatedloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*rotatedloadings
-            }
-            Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-          }
-          output_nclust$Lambda_ks[[k]]=rotatedloadings
-
-          invT=solve(T_matrix)
-          for(g in 1:G){ # counter-rotate all sets of factor (co)variances and factor means
-            crotatedFcov=invT%*%output_nclust$Phi_gks[[g,k]]%*%t(invT)
-            crotatedFmeans=output_nclust$alpha_gks[[g,k]]%*%t(invT)
-            if(k>1 && rotation!="target"){
-              crotatedFcov=crotatedFcov[perm,perm]
-              crotatedFmeans=crotatedFmeans[,perm]
-            }
-            if(rotation!="target"){
-              crotatedFcov=Rm*crotatedFcov*t(Rm)
-              crotatedFmeans=refl*crotatedFmeans
-            }
-            output_nclust$Phi_gks[[g,k]]=crotatedFcov
-            output_nclust$alpha_gks[[g,k]]=crotatedFmeans
-          }
-        }
-      }
-      if(sum(design)>0 || nfactors==1 || (rotation=="target" & sum(targetT==0 & targetW==1)==sum(targetW))){ # in case of CFA or zero-approximating target rotation, only reflect
-        for(k in 1:nclust){
-          loadings=output_nclust$Lambda_ks[[k]]
-          if(k==1){
-            if(rotation=="target"){
-              strongloadcutoff=mean(apply(abs(loadings),2,max))/2
-              strongloadind=which(abs(loadings)>=strongloadcutoff)
-              strongload=matrix(0,nrow=nvar,ncol=nfactors)
-              strongload[strongloadind]=loadings[strongloadind]
-            } else {
-              strongload=loadings # for CFA, all non-zero loadings are considered strong loadings
-            }
-            toreflect=colSums(strongload>0)<colSums(strongload<0)
-            refl=matrix(1,nrow=1,ncol=nfactors)
-            refl[toreflect]=-1
-            reflloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*loadings
-            reflloadings_cl1=reflloadings
-          } else {
-            agreem_cl1=matrix(0,nfactors,nfactors)
-            agreem_cl1_refl=agreem_cl1
-            for(q in 1:nfactors){
-              load=loadings[,q,drop=FALSE]
-              agreem_cl1[q,q]=sum(((load)-reflloadings_cl1[,q])^2)
-              agreem_cl1_refl[q,q]=sum(((-1*load)-reflloadings_cl1[,q])^2)
-            }
-            refl=matrix(1,nrow=1,ncol=nfactors)
-            refl[diag(agreem_cl1)>diag(agreem_cl1_refl)]=-1
-            reflloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*loadings
-          }
-          output_nclust$Lambda_ks[[k]]=reflloadings
-
-          Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-          for(g in 1:G){ # reflect all corresponding sets of factor (co)variances and factor means
-            Fcov=output_nclust$Phi_gks[[g,k]]
-            Fmeans=output_nclust$alpha_gks[[g,k]]
-            Fcov=Rm*Fcov*t(Rm)
-            Fmeans=refl*Fmeans
-            output_nclust$Phi_gks[[g,k]]=Fcov
-            output_nclust$alpha_gks[[g,k]]=Fmeans
-          }
-        }
-      }
-      prefix="Cluster"
-      suffix=seq(1:nclust)
-      colnames(output_nclust$Lambda_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$Lambda_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$Psi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$Psi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      rownames(output_nclust$tau_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$alpha_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$Phi_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$z_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$pi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      if(!is.null(grouplabels)){
-        rownames(output_nclust$z_gks)<-grouplabels
-        rownames(output_nclust$alpha_gks)<-grouplabels
-        rownames(output_nclust$Phi_gks)<-grouplabels
-      }
-      if(!is.null(varlabels)){
-        colnames(output_nclust$tau_ks)<-varlabels
-        for(k in 1:nclust){
-          rownames(output_nclust$Lambda_ks[[k]])<-varlabels
-          colnames(output_nclust$Psi_ks[[k]])<-varlabels
-          rownames(output_nclust$Psi_ks[[k]])<-varlabels
-        }
-      }
-      prefix="Factor"
-      suffix=seq(1:nfactors)
-      factorlabels=noquote(paste(prefix,suffix,sep="_"))
-      for(k in 1:nclust){
-        colnames(output_nclust$Lambda_ks[[k]])<-factorlabels
-        for(g in 1:G){
-           colnames(output_nclust$alpha_gks[[g,k]])<-factorlabels
-           colnames(output_nclust$Phi_gks[[g,k]])<-factorlabels
-           rownames(output_nclust$Phi_gks[[g,k]])<-factorlabels
-        }
-      }
-      output_nclust2<-list(clustermemberships=output_nclust$z_gks,clusterproportions=output_nclust$pi_ks,clusterspecific.loadings=output_nclust$Lambda_ks,group.and.clusterspecific.factorcovariances=output_nclust$Phi_gks,clusterspecific.uniquevariances=output_nclust$Psi_ks,clusterspecific.intercepts=output_nclust$tau_ks,group.and.clusterspecific.factormeans=output_nclust$alpha_gks)
-
-      MMGFAsolutions[[nclust-nsclust[1]+1]]=output_nclust2
     }
   }
   if (is.element("intercepts",cluster.spec) & is.element("residuals",cluster.spec) & is.element("loadings",cluster.spec)==FALSE){
-    for(nclust in nsclust[1]:nsclust[2]){
-      if(nclust==1){
-        cat(paste("Fitting MMG-FA with",nclust,"cluster ..."))
-        cat("\n")
-        output_nclust <- mixmgfa_interceptsresiduals(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
+    if(parcomp==1){
+      MMGFAsolutions <- foreach(nclust = nsclust[1]:nsclust[2], .packages=c("mixmgfa","GPArotation")) %dopar% {
+        outputnclust2 <- do_mixmgfa_interceptsresiduals(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
+        return(outputnclust2)
       }
-      else {
-        cat(paste("Fitting MMG-FA with",nclust,"clusters ..."))
-        cat("\n")
-        if(nclust==G){
-          output_nclust <- mixmgfa_interceptsresiduals(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = 1,design=design, preselect=preselect)
-        }
-        else{
-          output_nclust <- mixmgfa_interceptsresiduals(data2,N_gs,nclust,nfactors,maxiter = maxiter,start = 1,nruns = nruns,design=design, preselect=preselect)
-        }
+      stopCluster(cl)
+    } else {
+      for(nclust in nsclust[1]:nsclust[2]){
+        MMGFAsolutions[[nclust-nsclust[1]+1]] <- do_mixmgfa_interceptsresiduals(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,parcomp=parcomp)
       }
-      loglik=output_nclust$bestloglik
-      nrpars=output_nclust$nrpars
-      convergence=output_nclust$convergence>0
-      overview[nclust-nsclust[1]+1,]=cbind(nclust,loglik,nrpars,-2*loglik+nrpars*log(N),-2*loglik+nrpars*log(G),convergence,output_nclust$nractivatedconstraints)
-      if(sum(design)==0 && rotation!=0){
-        if(rotation=="varimax"){
-          rot<-GPForth(output_nclust$Lambda, method="varimax")
-        } else if(rotation=="oblimin"){
-          rot<-GPFoblq(output_nclust$Lambda, method="oblimin")
-        } else if(rotation=="target"){
-          rot<-GPFoblq(output_nclust$Lambda, method="pst",methodArgs =list(W=targetW,Target=targetT))
-        }
-        rotatedloadings=rot$loadings
-        if(rotation=="varimax"){
-          T_matrix=rot$Th
-        } else {
-          T_matrix=t(solve(rot$Th))
-        }
-        if(rotation!="target"){ # reflect in case of rotated EFA (not for target rotation)
-          strongloadcutoff=mean(apply(abs(rotatedloadings),2,max))/2
-          strongloadind=which(abs(rotatedloadings)>=strongloadcutoff)
-          strongload=matrix(0,nrow=nvar,ncol=nfactors)
-          strongload[strongloadind]=rotatedloadings[strongloadind]
-          toreflect=colSums(strongload>0)<colSums(strongload<0)
-          refl=matrix(1,nrow=1,ncol=nfactors)
-          refl[toreflect]=-1
-          rotatedloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*rotatedloadings
-          rotatedloadings_cl1=rotatedloadings
-          Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-        }
-        output_nclust$Lambda=rotatedloadings
-
-        invT=solve(T_matrix)
-        for(g in 1:G){ # counter-rotate all sets of factor (co)variances and factor means
-          crotatedFcov=invT%*%output_nclust$Phi_gs[[g]]%*%t(invT)
-          if(rotation!="target"){
-            crotatedFcov=Rm*crotatedFcov*t(Rm)
-          }
-          output_nclust$Phi_gs[[g]]=crotatedFcov
-          for(k in 1:nclust){
-            crotatedFmeans=output_nclust$alpha_gks[[g,k]]%*%t(invT)
-            if(rotation!="target"){
-              crotatedFmeans=refl*crotatedFmeans
-            }
-            output_nclust$alpha_gks[[g,k]]=crotatedFmeans
-          }
-        }
-      }
-      if(sum(design)>0 || nfactors==1 || (rotation=="target" & sum(targetT==0 & targetW==1)==sum(targetW))){ # in case of CFA or zero-approximating target rotation, only reflect
-        loadings=output_nclust$Lambda
-        if(rotation=="target"){
-          strongloadcutoff=mean(apply(abs(loadings),2,max))/2
-          strongloadind=which(abs(loadings)>=strongloadcutoff)
-          strongload=matrix(0,nrow=nvar,ncol=nfactors)
-          strongload[strongloadind]=loadings[strongloadind]
-        } else {
-          strongload=loadings # for CFA, all non-zero loadings are considered strong loadings
-        }
-        toreflect=colSums(strongload>0)<colSums(strongload<0)
-        refl=matrix(1,nrow=1,ncol=nfactors)
-        refl[toreflect]=-1
-        reflloadings=matrix(refl,nrow=nvar,ncol=nfactors,byrow=TRUE)*loadings
-        reflloadings_cl1=reflloadings
-        output_nclust$Lambda=reflloadings
-
-        Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
-        for(g in 1:G){ # reflect all corresponding sets of factor (co)variances and factor means
-          Fcov=output_nclust$Phi_gs[[g]]
-          Fcov=Rm*Fcov*t(Rm)
-          output_nclust$Phi_gs[[g]]=Fcov
-          for(k in 1:nclust){
-            Fmeans=output_nclust$alpha_gks[[g,k]]
-            Fmeans=refl*Fmeans
-            output_nclust$alpha_gks[[g,k]]=Fmeans
-          }
-        }
-      }
-
-      prefix="Cluster"
-      suffix=seq(1:nclust)
-      colnames(output_nclust$Psi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$Psi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      rownames(output_nclust$tau_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$alpha_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$z_gks)<-noquote(paste(prefix,suffix,sep="_"))
-      names(output_nclust$pi_ks)<-noquote(paste(prefix,suffix,sep="_"))
-      if(is.null(grouplabels)==FALSE){
-        rownames(output_nclust$z_gks)<-grouplabels
-        rownames(output_nclust$alpha_gks)<-grouplabels
-        rownames(output_nclust$Phi_gs)<-grouplabels
-      }
-      if(is.null(varlabels)==FALSE){
-        colnames(output_nclust$tau_ks)<-varlabels
-        rownames(output_nclust$Lambda)<-varlabels
-        for(k in 1:nclust){
-          colnames(output_nclust$Psi_ks[[k]])<-varlabels
-          rownames(output_nclust$Psi_ks[[k]])<-varlabels
-        }
-      }
-      prefix="Factor"
-      suffix=seq(1:nfactors)
-      factorlabels=noquote(paste(prefix,suffix,sep="_"))
-      colnames(output_nclust$Lambda)<-factorlabels
-      for(g in 1:G){
-        colnames(output_nclust$Phi_gs[[g]])<-factorlabels
-        rownames(output_nclust$Phi_gs[[g]])<-factorlabels
-        for(k in 1:nclust){
-          colnames(output_nclust$alpha_gks[[g,k]])<-factorlabels
-        }
-      }
-      output_nclust2<-list(clustermemberships=output_nclust$z_gks,clusterproportions=output_nclust$pi_ks,invariant.loadings=output_nclust$Lambda,groupspecific.factorcovariances=output_nclust$Phi_gs,clusterspecific.uniquevariances=output_nclust$Psi_ks,clusterspecific.intercepts=output_nclust$tau_ks,group.and.clusterspecific.factormeans=output_nclust$alpha_gks)
-
-      MMGFAsolutions[[nclust-nsclust[1]+1]]=output_nclust2
     }
+  }
+  if (is.element("loadings",cluster.spec) & is.element("residuals",cluster.spec) & is.element("intercepts",cluster.spec)==FALSE){
+    if(parcomp==1){
+      MMGFAsolutions <- foreach(nclust = nsclust[1]:nsclust[2], .packages=c("mixmgfa","GPArotation")) %dopar% {
+        outputnclust2 <- do_mixmgfa_loadingsresiduals(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,rescov=rescov,parcomp=parcomp)
+        return(outputnclust2)
+      }
+      stopCluster(cl)
+    } else {
+      for(nclust in nsclust[1]:nsclust[2]){
+        MMGFAsolutions[[nclust-nsclust[1]+1]] <- do_mixmgfa_loadingsresiduals(data2,N_gs,nclust,nfactors,varlabels,grouplabels,maxiter = maxiter,start = 1,nruns = nruns,design=design,rotation=rotation,preselect=preselect,targetT=targetT,targetW=targetW,rescov=rescov,parcomp=parcomp)
+      }
+    }
+  }
+
+  overview=matrix(0,nsclust[2]-nsclust[1]+1,8)
+  for(nclust in nsclust[1]:nsclust[2]){
+    output_nclust2=MMGFAsolutions[[nclust-nsclust[1]+1]]
+    loglik=output_nclust2$loglik
+    nrpars=output_nclust2$nrpars
+    overview[nclust-nsclust[1]+1,]=cbind(nclust,loglik,nrpars,-2*loglik+nrpars*log(N),-2*loglik+nrpars*log(ngroup),-2*loglik+nrpars*2,output_nclust2$convergence,output_nclust2$nractivatedconstraints)
   }
   if((max(overview))>0){
     nrows=nrow(overview)
     if(nrows>2){
-    screeratios=matrix(NA,nsclust[2]-nsclust[1]+1,1)
-    CHullcheck=0
-    for(nclust in (nsclust[1]+1):(nsclust[2]-1)){
-      LL_nclust=overview[nclust-nsclust[1]+1,2]
-      npar_nclust=overview[nclust-nsclust[1]+1,3]
-      LL_nclustmin1=overview[nclust-nsclust[1],2]
-      npar_nclustmin1=overview[nclust-nsclust[1],3]
-      LL_nclustplus1=overview[nclust-nsclust[1]+2,2]
-      npar_nclustplus1=overview[nclust-nsclust[1]+2,3]
-      # determine whether intermediate point is part of the convex hull
-      slope=(LL_nclustplus1-LL_nclustmin1)/(npar_nclustplus1-npar_nclustmin1)
-      point_line=LL_nclustmin1+slope*(npar_nclust-npar_nclustmin1)
-      #diff_fit=(LL_nclust-LL_nclustmin1)/abs(LL_nclust)
-      if(isTRUE(LL_nclust>=(point_line-.01))){ # && diff_fit>.0001)
-           screeratios[nclust-nsclust[1]+1]=((LL_nclust-LL_nclustmin1)/(npar_nclust-npar_nclustmin1))/((LL_nclustplus1-LL_nclust)/(npar_nclustplus1-npar_nclust))
-      }
-    }
-    #screeratios[CHullcheck<0]=NA
-    convexhull=which(!is.na(screeratios))
-    #nrows=nrow(overview)
-    convexhull=c(overview[1,1],convexhull,overview[nrows,1])
-    nrhull=length(convexhull)
-    change=0
-    if(nrhull<nrows){
-      change=1
-    }
-    while(nrhull>2 && change==1){ # check again whether intermediate points are on the convex hull
-      nsclusthull=overview[convexhull,1]
-      change=0
-      for(nclust in 2:(nrhull-1)){
-        if(!identical(convexhull[(nclust-1):(nclust+1)],c(convexhull[nclust]-1,convexhull[nclust],convexhull[nclust]+1))){
-          LL_nclust=overview[convexhull[nclust]-nsclust[1]+1,2]
-          npar_nclust=overview[convexhull[nclust]-nsclust[1]+1,3]
-          LL_nclustmin1=overview[convexhull[nclust-1]-nsclust[1]+1,2]
-          npar_nclustmin1=overview[convexhull[nclust-1]-nsclust[1]+1,3]
-          LL_nclustplus1=overview[convexhull[nclust+1]-nsclust[1]+1,2]
-          npar_nclustplus1=overview[convexhull[nclust+1]-nsclust[1]+1,3]
-          # determine whether intermediate point is part of the convex hull
-          slope=(LL_nclustplus1-LL_nclustmin1)/(npar_nclustplus1-npar_nclustmin1)
-          point_line=LL_nclustmin1+slope*(npar_nclust-npar_nclustmin1)
-          if(LL_nclust>=(point_line-.01)){
-            # when the subset of three points spans across a point not on the hull, this is the corrected scree ratio (comparing with the previous and next point ON THE HULL)
-            screeratios[convexhull[nclust]-nsclust[1]+1]=((LL_nclust-LL_nclustmin1)/(npar_nclust-npar_nclustmin1))/((LL_nclustplus1-LL_nclust)/(npar_nclustplus1-npar_nclust))
-          } else {
-            screeratios[convexhull[nclust]-nsclust[1]+1]=NA
-            change=1
-          }
+      screeratios=matrix(NA,nsclust[2]-nsclust[1]+1,1)
+      CHullcheck=0
+      for(nclust in (nsclust[1]+1):(nsclust[2]-1)){
+        LL_nclust=overview[nclust-nsclust[1]+1,2]
+        npar_nclust=overview[nclust-nsclust[1]+1,3]
+        LL_nclustmin1=overview[nclust-nsclust[1],2]
+        npar_nclustmin1=overview[nclust-nsclust[1],3]
+        LL_nclustplus1=overview[nclust-nsclust[1]+2,2]
+        npar_nclustplus1=overview[nclust-nsclust[1]+2,3]
+        # determine whether intermediate point is part of the convex hull
+        slope=(LL_nclustplus1-LL_nclustmin1)/(npar_nclustplus1-npar_nclustmin1)
+        point_line=LL_nclustmin1+slope*(npar_nclust-npar_nclustmin1)
+        #diff_fit=(LL_nclust-LL_nclustmin1)/abs(LL_nclust)
+        if(isTRUE(LL_nclust>=(point_line-.01))){ # && diff_fit>.0001)
+          screeratios[nclust-nsclust[1]+1]=((LL_nclust-LL_nclustmin1)/(npar_nclust-npar_nclustmin1))/((LL_nclustplus1-LL_nclust)/(npar_nclustplus1-npar_nclust))
         }
       }
+      #screeratios[CHullcheck<0]=NA
       convexhull=which(!is.na(screeratios))
-      convexhull=c(overview[1,1],convexhull,overview[nrows,1])
+      #nrows=nrow(overview)
+      convexhull=c(1,convexhull,nrows)
       nrhull=length(convexhull)
+      change=0
+      if(nrhull<nrows){
+        change=1
+      }
+      while(nrhull>2 && change==1){ # check again whether intermediate points are on the convex hull
+        nsclusthull=overview[convexhull,1]
+        change=0
+        for(indhull in 2:(nrhull-1)){
+          if(!identical(convexhull[(indhull-1):(indhull+1)],c(convexhull[indhull]-1,convexhull[indhull],convexhull[indhull]+1))){
+            LL_nclust=overview[convexhull[indhull],2]
+            npar_nclust=overview[convexhull[indhull],3]
+            LL_nclustmin1=overview[convexhull[indhull-1],2]
+            npar_nclustmin1=overview[convexhull[indhull-1],3]
+            LL_nclustplus1=overview[convexhull[indhull+1],2]
+            npar_nclustplus1=overview[convexhull[indhull+1],3]
+            # determine whether intermediate point is part of the convex hull
+            slope=(LL_nclustplus1-LL_nclustmin1)/(npar_nclustplus1-npar_nclustmin1)
+            point_line=LL_nclustmin1+slope*(npar_nclust-npar_nclustmin1)
+            if(LL_nclust>=(point_line-.01)){
+              # when the subset of three points spans across a point not on the hull, this is the corrected scree ratio (comparing with the previous and next point ON THE HULL)
+              screeratios[convexhull[indhull]]=((LL_nclust-LL_nclustmin1)/(npar_nclust-npar_nclustmin1))/((LL_nclustplus1-LL_nclust)/(npar_nclustplus1-npar_nclust))
+            } else {
+              screeratios[convexhull[indhull]]=NA
+              change=1
+            }
+          }
+        }
+        convexhull=which(!is.na(screeratios))
+        convexhull=c(1,convexhull,nrows)
+        nrhull=length(convexhull)
+      }
+      overview=cbind(overview[,1:6],screeratios,overview[,7:8])
     }
-    overview=cbind(overview[,1:5],screeratios,overview[,6:7])
-    }
-    prefix=seq(nsclust[1]:nsclust[2])
+    prefix=seq(nsclust[1],nsclust[2])
     suffix="clusters"
     sollistnames<-c(paste(prefix,suffix,sep="."))
     names(MMGFAsolutions)<-noquote(sollistnames)
     #overview=as.data.frame(overview,row.names=FALSE)
     if(nrows>2){
-      colnames(overview)<-c("nr of clusters","loglik","nrpars","BIC_N","BIC_G","screeratios","convergence","nr.activated.constraints")
+      colnames(overview)<-c("nr of clusters","loglik","nrpars","BIC_N","BIC_G","AIC","screeratios","convergence","nr.activated.constraints")
     } else {
-      colnames(overview)<-c("nr of clusters","loglik","nrpars","BIC_N","BIC_G","convergence","nr.activated.constraints")
+      colnames(overview)<-c("nr of clusters","loglik","nrpars","BIC_N","BIC_G","AIC","convergence","nr.activated.constraints")
     }
 
     # windows(8,6)
@@ -1256,12 +490,22 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     cat("\n")
     print(overview)
     cat("\n")
-    cat("Choose the best number of clusters ('K_best') based on the BIC_G and CHull scree ratios and the plots. For plots, use 'plot(OutputObject$overview)'.")
-    cat("\n")
-    cat("Based on the BIC_G, look for the number of clusters that minimizes the BIC_G or that corresponds to an elbow point in the BIC_G plot (after which the decrease with additional clusters levels off).")
-    cat("\n")
-    cat("Based on the CHull (scree ratios AND plot), look for the number of clusters that has the maximal scree ratio AND check whether this corresponds to at least a mild elbow point in the lower plot.")
-    cat("\n")
+    if(nrows>2){
+      cat("Choose the best number of clusters ('K_best') based on AIC, BIC_G and the CHull scree ratios. Also look at the plots obtained by using 'plot(OutputObject$overview)'.")
+      cat("\n")
+      cat("Based on the BIC_G, look for the number of clusters that minimizes the BIC_G or that corresponds to an elbow point in the BIC_G plot (after which the decrease with additional clusters levels off).")
+      cat("\n")
+      cat("Based on the CHull (scree ratios AND plot), look for the number of clusters that has the maximal scree ratio AND check whether this corresponds to at least a mild elbow point in the lower plot.")
+      cat("\n")
+    } else {
+      cat("Choose the best number of clusters ('K_best') based on the AIC and BIC_G.")
+      cat("\n")
+      cat("Based on the AIC/BIC_G, look for the number of clusters that minimizes the AIC/BIC_G.")
+      cat("\n")
+      cat("The CHull could not be performed, because too few numbers of clusters were considered.")
+      cat("\n")
+    }
+
     cat("Access the corresponding cluster memberships and parameter estimates by using OutputObject$MMGFAsolutions[[K_best]]$clustermemberships and, for example, OutputObject$MMGFAsolutions[[K_best]]$clusterspecific.loadings.")
     cat("\n")
     cat("The parameter sets are further subdivided in group- and/or cluster-specific parameter sets.")
@@ -1272,7 +516,7 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     #class(output)<-"mixmgfa"
 
   } else {
-    cat("You seem to have made a typo in 'cluster.spec' (make sure you use lowercase letters) or have requested a model that is not supported.")
+    cat("No output is generated. Perhaps you made a typo in 'cluster.spec' (make sure you use lowercase letters) or requested a model that is not supported.")
     cat("\n")
     cat("Please try again.")
     cat("\n")

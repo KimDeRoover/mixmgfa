@@ -1,10 +1,10 @@
-#' Mixture multigroup factor analysis for loading, intercept and residual variance (non-)variance
+#' Mixture multigroup factor analysis for loading and residual variance (non-)variance
 # --------------------------------------------------------------------------------------
 # Code written by Kim De Roover
 
 #' @description
-#' Finds clusters of groups based on their loadings, intercepts and residual variances, given a user-specified number of clusters.
-#' Factor (co)variances and factor means are group- and cluster-specific.
+#' Finds clusters of groups based on their loadings and residual variances, given a user-specified number of clusters.
+#' Item means are group-specific, which is equivalent to using centered data per group. Factor (co)variances and factor means are group- and cluster-specific.
 
 # INPUT:
 #' @param data A matrix of vertically concatenated, group-specific (co)variance matrices; or a matrix containing the vertically concatenated raw data for all groups (first column should not contain group ID).
@@ -32,9 +32,7 @@
 #'
 #' $Phi_gks = group- and cluster-specific factor (co)variances, access (co)variances of group g in cluster k via Phi_gks[[g,k]]
 #'
-#' $tau_ks = cluster-specific intercepts, access intercepts of cluster k via tau_ks[k,]
-#'
-#' $alpha_gks = group- and cluster-specific factor means, access factor means of group g in cluster k via alpha_gks[[g,k]]
+#' $mu_gs = group-specific means, access means of group g via mu_gs[g,]
 #'
 #' $bestloglik = final loglikelihood, loglikelihood of best start
 #'
@@ -47,7 +45,7 @@
 #' $nractivatedconstraints = number of constraints on the unique variances (across groups, for best start) to avoid unique variances approaching zero
 
 #' @export
-mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxiter = 5000,start = 1,nruns = 25,design = 0,preselect = 10,startpartition){ #rescov=0,preselect = 10,startpartition){
+mixmgfa_loadingsresiduals <- function(data,N_gs,nclust,nfactors,maxiter = 5000,start = 1,nruns = 25,design = 0,preselect = 10,rescov=0,startpartition){
 
   ngroup <- length(N_gs)
   if(nrow(N_gs)!=ngroup || is.null(nrow(N_gs))){ # make sure N_gs is a column vector
@@ -60,8 +58,8 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
   N <- sum(N_gs);
   IM <- diag(nclust)
 
-  if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){ # input is raw data matrix
-    nvar <- ncol(data)
+  if (is.list(data)==FALSE){ # input is raw data matrix
+    nvar=ncol(data)
     Xsup=as.matrix(data)
     Ncum <- matrix(0,ngroup,2)
     Ncum[1,1]=1
@@ -70,46 +68,41 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
       Ncum[g,1]=sum(N_gs[1:(g-1)])+1 # Ncum[g,1]: first row in Xsup for group g
       Ncum[g,2]=sum(N_gs[1:g]) # Ncum[g,2]: last row in Xsup for group g
     }
-
-    # compute group-specific observed means, covariances and mean cross-products
-    mean_gs <- matrix(0,ngroup,nvar)
-    obsS_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
-    CP_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
+    # compute group-specific means, work with group-centered data from now on
+    mu_gs=matrix(0,ngroup,nvar)
+    Xsupcent <- matrix(0,N,nvar)
     for(g in 1:ngroup){
       X_g <- Xsup[Ncum[g,1]:Ncum[g,2],]
-      mean_g <- colMeans(X_g)
-      mean_gs[g,] <- mean_g
-      # X_gc <- sweep(X_g,2,mean_g,check.margin = FALSE)
-      CP_g <- (1/N_gs[g])*crossprod(X_g,X_g)
-      CP_gs[[g]] <- CP_g
-      obsS_gs[[g]] <- CP_g-tcrossprod(mean_g,mean_g) #(1/N_gs[g])*(t(X_gc)%*%X_gc)
+      mu_gs[g,] <- colMeans(X_g)
+      Xsupcent[Ncum[g,1]:Ncum[g,2],]=scale(X_g,scale = FALSE)
     }
-  } else { # input is list or concatenation of covariance matrices and mean vectors
-    obsS_gs=data$covariances
-    mean_gs=data$means
-    if (is.list(obsS_gs)==FALSE){ # concatenation of covariance matrices should be turned into a list
-      nvar=ncol(obsS_gs)
-      obsS_gslist <- matrix(list(NA),nrow = ngroup, ncol = 1)
-      for(g in 1:ngroup){
-        obsS_gslist[[g]] <- obsS_gs[nvar*(g-1)+1:nvar*g,]
-      }
-      obsS_gs=obsS_gslist
-    } else { # input is a list of (1) a list of covariance matrices and (2) a list of mean vectors
-      nvar=ncol(obsS_gs[[1]])
-    }
-    if (is.list(mean_gs)){ # list of mean vectors should be turned into a matrix
-      mean_gs=matrix(unlist(mean_gs),ncol=nvar,nrow=ngroup,byrow = TRUE)
-    } else {
-      mean_gs=matrix(mean_gs,ncol=nvar,nrow=ngroup,byrow = TRUE)
-    }
+    Xsup <- Xsupcent
 
-    # compute group-specific mean cross-products
-    CP_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
+    # compute sample covariance matrices
+    S_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
     for(g in 1:ngroup){
-      mean_g <- mean_gs[g,]
-      CP_g <- obsS_gs[[g]]+tcrossprod(mean_g,mean_g)
-      CP_gs[[g]] <- CP_g
+      X_g=Xsup[Ncum[g,1]:Ncum[g,2],]
+      S_gs[[g]] <- (1/N_gs[g])*(t(X_g)%*%X_g)
     }
+  } else { # input is list or concatenation of covariance matrices
+    if (is.list(data)){ # input is a list of covariance matrices
+      nvar=ncol(data[[1]])
+      S_gs=data
+      mu_gs=matrix(0,ngroup,nvar)
+    }
+    else { # input is concatenation of covariance matrices that should be turned into a list
+      nvar=ncol(data)
+      S_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
+      for(g in 1:ngroup){
+        S_gs[[g]] <- data[nvar*(g-1)+1:nvar*g,]
+      }
+      mu_gs=matrix(0,ngroup,nvar)
+    }
+  }
+
+  logdetSs=matrix(0,ngroup)
+  for(g in 1:ngroup){
+    logdetSs[g]=log(det(S_gs[[g]]))
   }
 
   if (sum(design)==0){ # if design is unspecified, EFA is used
@@ -118,6 +111,7 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
   } else {
     EFA=0
   }
+
 
   if(start==1){
     if(nclust>1 && nclust<ngroup){
@@ -160,28 +154,16 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
           N_gks=sweep(z_gks,N_gs,MARGIN=1,'*',check.margin = FALSE) #N_gks=diag(N_gs[,1])%*%z_gks
           N_ks=colSums(N_gks)
 
-          tau_ks <- matrix(0,nclust,nvar)
-          for(k in 1:nclust){
-            for(g in 1:ngroup){
-              if(randpartvec[g]==k){
-                tau_ks[k,]=tau_ks[k,]+(N_gks[g,k]/N_ks[k])*mean_gs[g,]
-              }
-            }
-          }
-
           Lambda_ks <- matrix(list(NA),nrow = 1, ncol=nclust)
           uniq_ks <- matrix(0,nclust,nvar)
           for(k in 1:nclust){
             S_k=matrix(0,nvar,nvar)
             for(g in 1:ngroup){
               if(randpartvec[g]==k){
-                mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-                mu_gk=matrix(tau_ks[k,],nrow=1,ncol=nvar)
-                S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
-                S_k=S_k+N_gs[g]*S_gk
+                S_k=S_k+N_gs[g]*S_gs[[g]]
               }
             }
-            S_k=(1/N_ks[k])*S_k
+            S_k=(1/sum(N_gs[randpartvec==k]))*S_k
             ed<-eigen(S_k, symmetric=TRUE, only.values = FALSE)
             val<-ed$values
             u<-ed$vectors
@@ -200,32 +182,12 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
 
           Psi_ks <- matrix(list(NA), nrow = 1, ncol = nclust) # initialize cluster-specific unique variances
           Phi_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust) # initialize group- and cluster-specific factor covariances
-          alpha_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust) # initialize group- and cluster-specific factor means
           for(k in 1:nclust){
             Psi_ks[[k]]=diag(uniq_ks[k,])
           }
           for(g in 1:ngroup){
-            if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){
-              X_g <- Xsup[Ncum[g,1]:Ncum[g,2],]
-            }
             for(k in 1:nclust){
               Phi_gks[[g,k]]=diag(nfactors)
-              lambda_k=Lambda_ks[[k]]
-              if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){
-                X_c=sweep(X_g,2,tau_ks[k,],check.margin = FALSE)
-                udv=svd(X_c%*%lambda_k)
-                U=udv$u
-                V=udv$v
-                Fscores=U[,seq_len(nfactors),drop=FALSE]%*%t(V) # compute component scores as initial estimates of factor scores
-                Fvar=apply(Fscores,2,var)
-                Fscores=scale(Fscores,center=FALSE,scale=sqrt(Fvar))
-                alpha_gks[[g,k]] <- colMeans(Fscores)
-              } else {
-                tlambda_k=t(lambda_k)
-                S_g=obsS_gs[[g]]
-                tlambda_kS_g=tlambda_k%*%solve(S_g)
-                alpha_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,])%*%t(solve(((tlambda_kS_g)%*%lambda_k),(tlambda_kS_g)))
-              }
             }
           }
 
@@ -249,22 +211,11 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
             }
           }
 
-
-          S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
-          for(g in 1:ngroup){
-            for(k in 1:nclust){
-              mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-              mu_gk=tau_ks[k,]+alpha_gks[[g,k]]%*%t(Lambda_ks[[k]])
-              S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)#CP_gs[[g]]-t(mean_g)%*%mu_gk-t(mu_gk)%*%mean_g+t(mu_gk)%*%mu_gk
-              S_gks[[g,k]] <- S_gk
-            }
-          }
-
           # compute Beta_gks and theta_gks
           Beta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
           Theta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
-          meanexpEta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust) # mean of expected eta's for each group-cluster combination
           for(g in 1:ngroup){
+            S_g=S_gs[[g]]
             for(k in 1:nclust){
               phi_gk=Phi_gks[[g,k]]
               invsigma_gk=invSigma_gks[[g,k]]
@@ -273,32 +224,19 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
               beta_gk=phi_gk%*%tlambda_k%*%invsigma_gk
               tbeta_gk=t(beta_gk)
               Beta_gks[[g,k]]=beta_gk
-              S_gk=S_gks[[g,k]]
-              theta_gk=phi_gk-beta_gk%*%(lambda_k%*%phi_gk-S_gk%*%tbeta_gk)
+              theta_gk=phi_gk-beta_gk%*%(lambda_k%*%phi_gk-S_g%*%tbeta_gk)
               Theta_gks[[g,k]]=theta_gk
-              meanexpEta_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-alpha_gks[[g,k]]%*%tlambda_k)%*%tbeta_gk
             }
           }
 
-          Output_Mstep <- mixmgfa_loadinterceptsres_Mstep(S_gks,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,meanexpEta_gks,Lambda_ks,Psi_ks,Phi_gks,mean_gs,tau_ks,alpha_gks,rescov=0)
+          Output_Mstep <- mixmgfa_loadres_Mstep(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,Lambda_ks,Psi_ks,Phi_gks,rescov)
           Lambda_ks=Output_Mstep$Lambda_ks
           Psi_ks=Output_Mstep$Psi_ks
           Phi_gks=Output_Mstep$Phi_gks
-          tau_ks=Output_Mstep$tau_ks
-          alpha_gks=Output_Mstep$alpha_gks
           Sigma_gks=Output_Mstep$Sigma_gks
           invSigma_gks=Output_Mstep$invSigma_gks
           nractivatedconstraints=Output_Mstep$nractivatedconstraints
 
-          S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
-          for(g in 1:ngroup){
-            for(k in 1:nclust){
-              mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-              mu_gk=tau_ks[k,]+alpha_gks[[g,k]]%*%t(Lambda_ks[[k]])
-              S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g) #CP_gs[[g]]-t(mean_g)%*%mu_gk-t(mu_gk)%*%mean_g+t(mu_gk)%*%mu_gk
-              S_gks[[g,k]] <- S_gk
-            }
-          }
 
           # compute observed-data log-likelihood for start
           ODLL_trialstart=0;
@@ -308,7 +246,7 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
             for(k in 1:nclust){
               logdet_sigma_gk=log(det(Sigma_gks[[g,k]]))
               invSigma_gk=invSigma_gks[[g,k]]
-              loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_gks[[g,k]]*invSigma_gk)) # sum(S_gks[[g,k]]*invSigma_gk)=sum(diag(S_gks[[g,k]]%*%invSigma_gk))
+              loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_gs[[g]]*invSigma_gk))
               loglik_gks[g,k]=loglik_gk
               loglik_gksw[g,k]=log(pi_ks[k])+loglik_gk
             }
@@ -371,28 +309,16 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
     N_gks=sweep(z_gks,N_gs,MARGIN=1,'*',check.margin = FALSE) #N_gks=diag(N_gs[,1])%*%z_gks
     N_ks=colSums(N_gks)
 
-    tau_ks <- matrix(0,nclust,nvar)
-    for(k in 1:nclust){
-      for(g in 1:ngroup){
-        if(randpartvec[g]==k){
-          tau_ks[k,]=tau_ks[k,]+(N_gks[g,k]/N_ks[k])*mean_gs[g,]
-        }
-      }
-    }
-
     Lambda_ks <- matrix(list(NA),nrow = 1, ncol=nclust)
     uniq_ks <- matrix(0,nclust,nvar)
     for(k in 1:nclust){
       S_k=matrix(0,nvar,nvar)
       for(g in 1:ngroup){
         if(randpartvec[g]==k){
-          mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-          mu_gk=matrix(tau_ks[k,],nrow=1,ncol=nvar)
-          S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
-          S_k=S_k+N_gs[g]*S_gk
+          S_k=S_k+N_gs[g]*S_gs[[g]]
         }
       }
-      S_k=(1/N_ks[k])*S_k
+      S_k=(1/sum(N_gs[randpartvec==k]))*S_k
       ed<-eigen(S_k, symmetric=TRUE, only.values = FALSE)
       val<-ed$values
       u<-ed$vectors
@@ -416,30 +342,10 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
       Psi_ks[[k]]=diag(uniq_ks[k,])
     }
     for(g in 1:ngroup){
-      if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){
-        X_g <- Xsup[Ncum[g,1]:Ncum[g,2],]
-      }
       for(k in 1:nclust){
         Phi_gks[[g,k]]=diag(nfactors)
-        lambda_k=Lambda_ks[[k]]
-        if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){
-          X_c=sweep(X_g,2,tau_ks[k,],check.margin = FALSE)
-          udv=svd(X_c%*%lambda_k)
-          U=udv$u
-          V=udv$v
-          Fscores=U[,seq_len(nfactors),drop=FALSE]%*%t(V) # compute component scores as initial estimates of factor scores
-          Fvar=apply(Fscores,2,var)
-          Fscores=scale(Fscores,center=FALSE,scale=sqrt(Fvar))
-          alpha_gks[[g,k]] <- colMeans(Fscores)
-        } else {
-          tlambda_k=t(lambda_k)
-          S_g=obsS_gs[[g]]
-          tlambda_kS_g=tlambda_k%*%solve(S_g)
-          alpha_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,])%*%t(solve(((tlambda_kS_g)%*%lambda_k),(tlambda_kS_g)))
-        }
       }
     }
-
 
     Sigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
     invSigma_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
@@ -460,24 +366,13 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
       }
     }
 
-
-    S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
-    for(g in 1:ngroup){
-      for(k in 1:nclust){
-        mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-        mu_gk=tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda_ks[[k]])
-        S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
-        S_gks[[g,k]] <- S_gk
-      }
-    }
-
     # compute the loglikelihood for each group-cluster combination, unweighted with mixing proportions, to be used for update of posterior classification probabilities
     loglik_gks <- matrix(0, nrow = ngroup, ncol = nclust);
     for(g in 1:ngroup){
       for(k in 1:nclust){
         logdet_sigma_gk=log(det(Sigma_gks[[g,k]]))
         invSigma_gk=invSigma_gks[[g,k]]
-        loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_gks[[g,k]]*invSigma_gk)) # sum(S_gks[[g,k]]*invSigma_gk)=sum(diag(S_gks[[g,k]]%*%invSigma_gk))
+        loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_gs[[g]]*invSigma_gk))
         loglik_gks[g,k]=loglik_gk
       }
     }
@@ -487,19 +382,18 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
     conv2=1
     ODLL=-Inf
     pars=pi_ks
+    #ODLLs=c()
     for(k in 1:nclust){
       lambda_k=Lambda_ks[[k]]
       pars=c(pars,lambda_k[design==1])
     }
-    pars=c(pars,lapply(Psi_ks,diag),Phi_gks,tau_ks,alpha_gks)
+    pars=c(pars,lapply(Psi_ks,diag),Phi_gks)
     pars=unlist(pars)
     while(min(conv1,conv2)>1e-4 && iter<100){
       prev_ODLL=ODLL
       prev_Lambda_ks=Lambda_ks
       prev_Psi_ks=Psi_ks
       prev_Phi_gks=Phi_gks
-      prev_tau_ks=tau_ks
-      prev_alpha_gks=alpha_gks
       prev_pars=pars
       iter=iter+1
 
@@ -517,8 +411,8 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
       # compute Beta_gks and theta_gks
       Beta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
       Theta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
-      meanexpEta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust) # mean of expected eta's for each group-cluster combination
       for(g in 1:ngroup){
+        S_g=S_gs[[g]]
         for(k in 1:nclust){
           phi_gk=Phi_gks[[g,k]]
           invsigma_gk=invSigma_gks[[g,k]]
@@ -527,33 +421,20 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
           beta_gk=phi_gk%*%tlambda_k%*%invsigma_gk
           tbeta_gk=t(beta_gk)
           Beta_gks[[g,k]]=beta_gk
-          S_gk=S_gks[[g,k]]
-          theta_gk=phi_gk-beta_gk%*%(lambda_k%*%phi_gk-S_gk%*%tbeta_gk)
+          theta_gk=phi_gk-beta_gk%*%(lambda_k%*%phi_gk-S_g%*%tbeta_gk)
           Theta_gks[[g,k]]=theta_gk
-          meanexpEta_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-alpha_gks[[g,k]]%*%tlambda_k)%*%tbeta_gk
         }
       }
 
+
       # **M-step**:
-      Output_Mstep <- mixmgfa_loadinterceptsres_Mstep(S_gks,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,meanexpEta_gks,Lambda_ks,Psi_ks,Phi_gks,mean_gs,tau_ks,alpha_gks,rescov=0)
+      Output_Mstep <- mixmgfa_loadres_Mstep(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,Lambda_ks,Psi_ks,Phi_gks,rescov)
       Lambda_ks=Output_Mstep$Lambda_ks
       Psi_ks=Output_Mstep$Psi_ks
       Phi_gks=Output_Mstep$Phi_gks
-      tau_ks=Output_Mstep$tau_ks
-      alpha_gks=Output_Mstep$alpha_gks
       Sigma_gks=Output_Mstep$Sigma_gks
       invSigma_gks=Output_Mstep$invSigma_gks
       nractivatedconstraints=Output_Mstep$nractivatedconstraints
-
-      S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
-      for(g in 1:ngroup){
-        for(k in 1:nclust){
-          mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-          mu_gk=tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda_ks[[k]])
-          S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
-          S_gks[[g,k]] <- S_gk
-        }
-      }
 
 
       # check on change in observed-data log-likelihood
@@ -561,10 +442,11 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
       loglik_gks <- matrix(0, nrow = ngroup, ncol = nclust) # unweighted with mixing proportions, to be re-used for calculation posterior classification probabilities
       loglik_gksw <- matrix(0, nrow = ngroup, ncol = nclust) # weighted with mixing proportions
       for(g in 1:ngroup){
+        S_g=S_gs[[g]]
         for(k in 1:nclust){
           logdet_sigma_gk=log(det(Sigma_gks[[g,k]]))
           invSigma_gk=invSigma_gks[[g,k]]
-          loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_gks[[g,k]]*invSigma_gk)) # sum(S_gks[[g,k]]*invSigma_gk)=sum(diag(S_gks[[g,k]]%*%invSigma_gk))
+          loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_g*invSigma_gk))
           loglik_gks[g,k]=loglik_gk
           loglik_gksw[g,k]=log(pi_ks[k])+loglik_gk
         }
@@ -575,13 +457,14 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
         ODLL=ODLL+log(sum(loglik_gksw[g,]))+m_i;
       }
 
+      #ODLLs=c(ODLLs,ODLL)
 
       pars=pi_ks
       for(k in 1:nclust){
         lambda_k=Lambda_ks[[k]]
         pars=c(pars,lambda_k[design==1])
       }
-      pars=c(pars,lapply(Psi_ks,diag),Phi_gks,tau_ks,alpha_gks)
+      pars=c(pars,lapply(Psi_ks,diag),Phi_gks)
       pars=unlist(pars)
       parsdiff <- mapply("-",pars,prev_pars)
       parsdiffdiv <- mapply("/",parsdiff,prev_pars)
@@ -592,6 +475,7 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
       }
 
       conv2=ODLL-prev_ODLL
+
 
       if(ODLL-prev_ODLL<0){
         print(ODLL-prev_ODLL)
@@ -606,8 +490,6 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
       bestLambda_ks=Lambda_ks
       bestPsi_ks=Psi_ks
       bestPhi_gks=Phi_gks
-      besttau_ks=tau_ks
-      bestalpha_gks=alpha_gks
       bestSigma_gks=Sigma_gks
       bestinvSigma_gks=invSigma_gks
       bestloglik=ODLL
@@ -623,8 +505,6 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
         bestLambda_ks=Lambda_ks
         bestPsi_ks=Psi_ks
         bestPhi_gks=Phi_gks
-        besttau_ks=tau_ks
-        bestalpha_gks=alpha_gks
         bestSigma_gks=Sigma_gks
         bestinvSigma_gks=invSigma_gks
         bestloglik=ODLL
@@ -643,8 +523,6 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
   Lambda_ks=bestLambda_ks
   Psi_ks=bestPsi_ks
   Phi_gks=bestPhi_gks
-  tau_ks=besttau_ks
-  alpha_gks=bestalpha_gks
   Sigma_gks=bestSigma_gks
   invSigma_gks=bestinvSigma_gks
   ODLL=bestloglik
@@ -658,15 +536,13 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
     lambda_k=Lambda_ks[[k]]
     pars=c(pars,lambda_k[design==1])
   }
-  pars=c(pars,lapply(Psi_ks,diag),Phi_gks,tau_ks,alpha_gks)
+  pars=c(pars,lapply(Psi_ks,diag),Phi_gks)
   pars=unlist(pars)
   while(min(conv1,conv2)>1e-6 && iter<maxiter+1){ # iterate till convergence for best start
     prev_ODLL=ODLL
     prev_Lambda_ks=Lambda_ks
     prev_Psi_ks=Psi_ks
     prev_Phi_gks=Phi_gks
-    prev_tau_ks=tau_ks
-    prev_alpha_gks=alpha_gks
     prev_pars=pars
     iter=iter+1
 
@@ -679,24 +555,12 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
     # update mixing proportions
     pi_ks=(1/ngroup)*colSums(z_gks)
 
-    if(iter==bestiter+1){
-      S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
-      for(g in 1:ngroup){
-        for(k in 1:nclust){
-          mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-          mu_gk=tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda_ks[[k]])
-          S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
-          S_gks[[g,k]] <- S_gk
-        }
-      }
-    }
-
 
     # compute Beta_gks and theta_gks
     Beta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
     Theta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
-    meanexpEta_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust) # mean of expected eta's for each group-cluster combination
     for(g in 1:ngroup){
+      S_g=S_gs[[g]]
       for(k in 1:nclust){
         phi_gk=Phi_gks[[g,k]]
         invsigma_gk=invSigma_gks[[g,k]]
@@ -705,41 +569,29 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
         beta_gk=phi_gk%*%tlambda_k%*%invsigma_gk
         tbeta_gk=t(beta_gk)
         Beta_gks[[g,k]]=beta_gk
-        S_gk=S_gks[[g,k]]
-        theta_gk=phi_gk-beta_gk%*%(lambda_k%*%phi_gk-S_gk%*%tbeta_gk)
+        theta_gk=phi_gk-beta_gk%*%(lambda_k%*%phi_gk-S_g%*%tbeta_gk)
         Theta_gks[[g,k]]=theta_gk
-        meanexpEta_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-alpha_gks[[g,k]]%*%tlambda_k)%*%tbeta_gk
       }
     }
 
-    Output_Mstep <- mixmgfa_loadinterceptsres_Mstep(S_gks,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,meanexpEta_gks,Lambda_ks,Psi_ks,Phi_gks,mean_gs,tau_ks,alpha_gks,rescov=0)
+    Output_Mstep <- mixmgfa_loadres_Mstep(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,Lambda_ks,Psi_ks,Phi_gks,rescov)
     Lambda_ks=Output_Mstep$Lambda_ks
     Psi_ks=Output_Mstep$Psi_ks
     Phi_gks=Output_Mstep$Phi_gks
-    tau_ks=Output_Mstep$tau_ks
-    alpha_gks=Output_Mstep$alpha_gks
     Sigma_gks=Output_Mstep$Sigma_gks
     invSigma_gks=Output_Mstep$invSigma_gks
     nractivatedconstraints=Output_Mstep$nractivatedconstraints
 
-    S_gks <- matrix(list(NA),nrow = ngroup, ncol = nclust)
-    for(g in 1:ngroup){
-      for(k in 1:nclust){
-        mean_g=matrix(mean_gs[g,],nrow=1,ncol=nvar)
-        mu_gk=tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda_ks[[k]])
-        S_gk=CP_gs[[g]]-crossprod(mean_g,mu_gk)+crossprod(mu_gk,mu_gk-mean_g)
-        S_gks[[g,k]] <- S_gk
-      }
-    }
 
     ODLL=0;
     loglik_gks <- matrix(0, nrow = ngroup, ncol = nclust) # unweighted with mixing proportions, to be re-used for calculation posterior classification probabilities
     loglik_gksw <- matrix(0, nrow = ngroup, ncol = nclust) # weighted with mixing proportions
     for(g in 1:ngroup){
+      S_g=S_gs[[g]]
       for(k in 1:nclust){
         logdet_sigma_gk=log(det(Sigma_gks[[g,k]]))
         invSigma_gk=invSigma_gks[[g,k]]
-        loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_gks[[g,k]]*invSigma_gk)) # sum(S_gks[[g,k]]*invSigma_gk)=sum(diag(S_gks[[g,k]]%*%invSigma_gk))
+        loglik_gk=-(1/2)*N_gs[g]*(nvar*log(2*pi)+logdet_sigma_gk+sum(S_g*invSigma_gk))
         loglik_gks[g,k]=loglik_gk
         loglik_gksw[g,k]=log(pi_ks[k])+loglik_gk
       }
@@ -755,7 +607,7 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
       lambda_k=Lambda_ks[[k]]
       pars=c(pars,lambda_k[design==1])
     }
-    pars=c(pars,lapply(Psi_ks,diag),Phi_gks,tau_ks,alpha_gks)
+    pars=c(pars,lapply(Psi_ks,diag),Phi_gks)
     pars=unlist(pars)
     parsdiff <- mapply("-",pars,prev_pars)
     parsdiffdiv <- mapply("/",parsdiff,prev_pars)
@@ -768,6 +620,7 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
     conv2=ODLL-prev_ODLL
     if(ODLL-prev_ODLL<0){
       print(ODLL-prev_ODLL)
+      browser()
     }
     bestloglik=ODLL
 
@@ -818,53 +671,25 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
         Phi_gks[[g,k]]=((phi_gk+t(phi_gk))/2); # enforce perfect symmetry
       }
       Lambda_ks[[k]]=Lambda_ks[[k]]%*%sqrtFscale # compensate for (re)scaling of factors in the loadings
-      for(g in 1:ngroup){ # transform the factor means accordingly
-        alpha_gks[[g,k]]=alpha_gks[[g,k]]%*%invsqrtFscale
-      }
     }
   }
 
-  # identification of factor means and intercepts
-  mean_alpha_ks=matrix(0,nclust,nfactors)
-  for(g in 1:ngroup){
-    for(k in 1:nclust){
-      if(N_gks[g,k]>0){
-        mean_alpha_ks[k,]=mean_alpha_ks[k,]+N_gks[g,k]/N_ks[k]*alpha_gks[[g,k]]
-      }
-    }
+  if(sum(rescov)>nvar){
+    nrescov=sum(rescov[lower.tri(rescov,diag="FALSE")])
+  } else {
+    nrescov=0
   }
-  # Translation of factor means per cluster and cycle 1 update indicator intercepts (see De Roover, 2021)
-  for(k in 1:nclust){
-    for(g in 1:ngroup){
-      alpha_gks[[g,k]]=alpha_gks[[g,k]]-mean_alpha_ks[k,]
-    }
-    if(N_ks[k]>0){
-      lambda_k=Lambda_ks[[k]]
-      suminvSigma=matrix(0,nvar,nvar)
-      summeansminusalphaLambdainvSigma=matrix(0,1,nvar)
-      tlambda_k=t(lambda_k)
-      for(g in 1:ngroup){
-        if(N_gks[g,k]>0){
-          invSigma_gk=invSigma_gks[[g,k]]
-          summeansminusalphaLambdainvSigma=summeansminusalphaLambdainvSigma+N_gks[g,k]*(mean_gs[g,]-alpha_gks[[g,k]]%*%tlambda_k)%*%invSigma_gk
-          suminvSigma=suminvSigma+N_gks[g,k]*invSigma_gk
-        }
-      }
-      tau_ks[k,]=t(solve(suminvSigma,t(summeansminusalphaLambdainvSigma)))
-    }
-  }
-
-
-
   if(EFA==1){
-    nrpars=nclust-1+(nvar*nfactors-(nfactors*(nfactors-1)*(1/2)))*nclust+(nfactors*(nfactors+1)/2)*(ngroup-nclust)+nvar*nclust+nfactors*(ngroup-nclust)+nvar*nclust-nractivatedconstraints;
+    nrpars=nclust-1+(nvar*nfactors-(nfactors*(nfactors-1)*(1/2)))*nclust+(nfactors*(nfactors+1)/2)*(ngroup-nclust)+nvar*ngroup+nvar*nclust-nractivatedconstraints + nrescov*nclust;
   }
   else {
-    nrpars=nclust-1+sum(design)*nclust+(nfactors*(nfactors+1)/2)*ngroup-nclust*nfactors+nvar*nclust+nfactors*(ngroup-nclust)+nvar*nclust-nractivatedconstraints;
+    nrpars=nclust-1+sum(design)*nclust+(nfactors*(nfactors+1)/2)*ngroup-nclust*nfactors+nvar*ngroup+nvar*nclust-nractivatedconstraints + nrescov*nclust;
   }
 
 
-  output_list <- list(z_gks=z_gks,pi_ks=pi_ks,Lambda_ks=Lambda_ks,Psi_ks=Psi_ks,Phi_gks=Phi_gks,tau_ks=tau_ks,alpha_gks=alpha_gks,bestloglik=bestloglik,logliks=logliks,nrpars=nrpars,convergence=convergence,nractivatedconstraints=nractivatedconstraints)
+
+
+  output_list <- list(z_gks=z_gks,pi_ks=pi_ks,Lambda_ks=Lambda_ks,Psi_ks=Psi_ks,Phi_gks=Phi_gks,mu_gs=mu_gs,bestloglik=bestloglik,logliks=logliks,nrpars=nrpars,convergence=convergence,nractivatedconstraints=nractivatedconstraints)
 
   return(output_list)
 } # end main function
@@ -898,7 +723,7 @@ UpdPostProb <- function(pi_ks, loglik_gks, ngroup, nclust, v=1){
 
 
 
-mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,meanexpEta_gks,Lambda_ks,Psi_ks,Phi_gks,mean_gs,tau_ks,alpha_gks,rescov=0){
+mixmgfa_loadres_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_gks,Theta_gks,Lambda_ks,Psi_ks,Phi_gks,rescov=0){
   nractivatedconstraints <- 0
   ngroup <- length(N_gs)
   N_ks=colSums(N_gks)
@@ -909,73 +734,22 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
     EFA=0
   }
 
-  invPsi_ks <- matrix(list(NA), nrow = nclust, ncol = 1)
-  if(sum(rescov)==nvar || max(rescov)==0){
-    for(k in 1:nclust){
-      Psi_k=Psi_ks[[k]]
-      invPsi_k=diag(1/diag(Psi_k))
-      invPsi_ks[[k]] <- invPsi_k
-    }
-  } else {
-    for(k in 1:nclust){
-      Psi_k=Psi_ks[[k]]
-      invPsi_k=solve(Psi_k)
-      invPsi_ks[[k]] <- invPsi_k
-    }
-  }
-
-
-  # update indicator intercepts
-  for(k in 1:nclust){
-    if(N_ks[k]>0){
-      tLambda_k=t(Lambda_ks[[k]])
-      Psi_k=Psi_ks[[k]]
-      invPsi_k=invPsi_ks[[k]]
-      #suminvPsi=matrix(0,nvar,nvar)
-      summeansminusalphaLambdainvPsi=matrix(0,1,nvar)
-      for(g in 1:ngroup){
-        if(N_gks[g,k]>0){
-          summeansminusalphaLambdainvPsi=summeansminusalphaLambdainvPsi+N_gks[g,k]*(mean_gs[g,]-(alpha_gks[[g,k]]+meanexpEta_gks[[g,k]])%*%tLambda_k)%*%invPsi_k
-          #suminvPsi=suminvPsi+N_gks[g,k]*invPsi_k
-        }
-      }
-      tau_ks[k,]=(1/N_ks[k])*(summeansminusalphaLambdainvPsi%*%Psi_k) # t(solve(suminvPsi,t(summeansminusalphaLambdainvPsi)))
-    }
-  }
-
-  # update factor means
-  for(k in 1:nclust){
-    if(N_ks[k]>0){
-      lambda_k=Lambda_ks[[k]]
-      tLambda_k=t(lambda_k)
-      invPsi_k=invPsi_ks[[k]]
-      tLambda_kinvPsi_k=tLambda_k%*%invPsi_k
-      for(g in 1:ngroup){
-        alpha_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-meanexpEta_gks[[g,k]]%*%tLambda_k)%*%t(solve(((tLambda_kinvPsi_k)%*%lambda_k),(tLambda_kinvPsi_k)))
-      }
-    }
-  }
-
-  # update factor loadings
+  # update cluster-specific factor loadings
   if(EFA==1){
     for(k in 1:nclust){
       if(N_ks[k]>0){
         sumSbeta=matrix(0,nvar,nfactors)
-        sumthetaalpha=matrix(0,nfactors,nfactors)
-        summeansalpha=matrix(0,nvar,nfactors)
+        sumtheta=matrix(0,nfactors,nfactors)
         for(g in 1:ngroup){
           if(N_gks[g,k]>0){
-            S_gk=S_gks[[g,k]]
+            S_g=S_gs[[g]]
             beta_gk=Beta_gks[[g,k]]
             theta_gk=Theta_gks[[g,k]]
-            alpha_gk=alpha_gks[[g,k]]
-            meanexpeta_gk=meanexpEta_gks[[g,k]]
-            sumSbeta=sumSbeta+N_gks[g,k]*S_gk%*%t(beta_gk)
-            sumthetaalpha=sumthetaalpha+N_gks[g,k]*(theta_gk+(t(alpha_gk)+t(meanexpeta_gk))%*%alpha_gk)
-            summeansalpha=summeansalpha+N_gks[g,k]*((mean_gs[g,]-tau_ks[k,])%*%alpha_gk)
+            sumSbeta=sumSbeta+N_gks[g,k]*S_g%*%t(beta_gk)
+            sumtheta=sumtheta+N_gks[g,k]*theta_gk
           }
         }
-        lambda_k=t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
+        lambda_k=t(solve(sumtheta,t(sumSbeta)))
         Lambda_ks[[k]]=lambda_k
       }
     }
@@ -987,33 +761,27 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
           nfactors_j=sum(design[j,])
           d_j=design[j,]==1
           sumSbeta=matrix(0,1,nfactors_j)
-          sumthetaalpha=matrix(0,nfactors_j,nfactors_j)
-          summeansalpha=matrix(0,1,nfactors_j)
+          sumtheta=matrix(0,nfactors_j,nfactors_j)
           for(g in 1:ngroup){
             if(N_gks[g,k]>0){
-              S_gk=S_gks[[g,k]]
+              S_g=S_gs[[g]]
               beta_gk=Beta_gks[[g,k]]
               if(nfactors_j<nfactors){
                 beta_gk=beta_gk[d_j, ,drop=FALSE]
               }
               theta_gk=Theta_gks[[g,k]]
               theta_gk=theta_gk[d_j,d_j]
-              alpha_gk=alpha_gks[[g,k]]
-              alpha_gk=alpha_gk[d_j]
-              meanexpeta_gk=meanexpEta_gks[[g,k]]
-              meanexpeta_gk=meanexpeta_gk[d_j]
-              talpha_gk=t(alpha_gk)
-              sumSbeta=sumSbeta+(N_gks[g,k])*S_gk[j,]%*%t(beta_gk)
-              sumthetaalpha=sumthetaalpha+(N_gks[g,k])*(theta_gk+(alpha_gk+meanexpeta_gk)%*%talpha_gk)
-              summeansalpha=summeansalpha+(N_gks[g,k])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
+              sumSbeta=sumSbeta+(N_gks[g,k])*S_g[j,]%*%t(beta_gk)
+              sumtheta=sumtheta+(N_gks[g,k])*(theta_gk)
             }
           }
-          lambda_k[j,design[j,]==1]= t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
+          lambda_k[j,design[j,]==1]= t(solve(sumtheta,t(sumSbeta)))
         }
         Lambda_ks[[k]]=lambda_k
       }
     }
   }
+
 
   # update unique variances
   nractivatedconstraints=0
@@ -1024,11 +792,11 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
       sumS_2SbetaB_BthetaB=0
       for(g in 1:ngroup){
         if(N_gks[g,k]>0){
-          S_gk=S_gks[[g,k]]
+          S_g=S_gs[[g]]
           beta_gk=Beta_gks[[g,k]]
           theta_gk=Theta_gks[[g,k]]
-          lambdabetaS=lambda_k%*%beta_gk%*%S_gk
-          sumS_2SbetaB_BthetaB=sumS_2SbetaB_BthetaB+(N_gks[g,k]/N_ks[k])*(S_gk-(lambdabetaS+t(lambdabetaS))+lambda_k%*%theta_gk%*%tlambda_k)
+          lambdabetaS=lambda_k%*%beta_gk%*%S_g
+          sumS_2SbetaB_BthetaB=sumS_2SbetaB_BthetaB+(N_gks[g,k]/N_ks[k])*(S_g-(lambdabetaS+t(lambdabetaS))+lambda_k%*%theta_gk%*%tlambda_k)
         }
       }
       if(sum(rescov)==nvar || max(rescov)==0){
@@ -1044,16 +812,17 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
         diag(Psi_k)=d
         nractivatedconstraints=nractivatedconstraints+sum(ind)
       }
-      Psi_ks[[k]]=Psi_k
+      Psi_ks[[k]]=(Psi_k+t(Psi_k))/2
     }
   }
+
 
   # update factor (co)variances
   for(g in 1:ngroup){
     for(k in 1:nclust){
       if(N_ks[k]>0){
         theta_gk=Theta_gks[[g,k]]
-        Phi_gks[[g,k]]=theta_gk
+        Phi_gks[[g,k]]=(theta_gk+t(theta_gk))*(1/2)
       }
     }
   }
@@ -1084,7 +853,7 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
   }
 
 
-  output_list <- list(Lambda_ks=Lambda_ks,Psi_ks=Psi_ks,Phi_gks=Phi_gks,tau_ks=tau_ks,alpha_gks=alpha_gks,Sigma_gks=Sigma_gks,invSigma_gks=invSigma_gks,nractivatedconstraints=nractivatedconstraints)
+  output_list <- list(Lambda_ks=Lambda_ks,Psi_ks=Psi_ks,Phi_gks=Phi_gks,Sigma_gks=Sigma_gks,invSigma_gks=invSigma_gks,nractivatedconstraints=nractivatedconstraints)
 
   return(output_list)
 }
