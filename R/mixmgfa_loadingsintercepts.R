@@ -967,12 +967,13 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
     }
     if(N_ks[k]>0){
       lambda_k=Lambda_ks[[k]]
+      tlambda_k=t(lambda_k)
       suminvSigma=matrix(0,nvar,nvar)
       summeansminusalphaLambdainvSigma=matrix(0,1,nvar)
       for(g in 1:ngroup){
         if(N_gks[g,k]>0){
           invSigma_gk=invSigma_gks[[g,k]]
-          summeansminusalphaLambdainvSigma=summeansminusalphaLambdainvSigma+N_gks[g,k]*(mean_gs[g,]-alpha_gks[[g,k]]%*%t(lambda_k))%*%invSigma_gk
+          summeansminusalphaLambdainvSigma=summeansminusalphaLambdainvSigma+N_gks[g,k]*(mean_gs[g,]-alpha_gks[[g,k]]%*%tlambda_k)%*%invSigma_gk
           suminvSigma=suminvSigma+N_gks[g,k]*invSigma_gk
         }
       }
@@ -1030,11 +1031,11 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
   ngroup <- length(N_gs)
   N_ks=colSums(N_gks)
 
-  # if(sum(design)==nvar*nfactors){ # if design contains only '1's, EFA is used
-  #   EFA=1
-  # } else {
-  #   EFA=0
-  # }
+  if(sum(design)==nvar*nfactors){ # if design contains only '1's, EFA is used
+    EFA=1
+  } else {
+    EFA=0
+  }
 
   invPsi_gs <- matrix(list(NA), nrow = ngroup, ncol = 1)
   for(g in 1:ngroup){
@@ -1069,22 +1070,20 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
         lambda_k=Lambda_ks[[k]]
         tlambda_k=t(lambda_k)
         tlambda_kinvPsi_g=tlambda_k%*%invPsi_g
-        alpha_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-meanexpEta_gks[[g,k]]%*%tlambda_k)%*%t(solve(((tlambda_kinvPsi_g)%*%lambda_k),(tlambda_kinvPsi_g)))
+        alpha_gks[[g,k]]=(mean_gs[g,]-tau_ks[k,]-meanexpEta_gks[[g,k]]%*%tlambda_k)%*%t(solve((tlambda_kinvPsi_g%*%lambda_k),(tlambda_kinvPsi_g)))
       }
     }
   }
 
 
   # update factor loadings
-  for(k in 1:nclust){
-    if(N_ks[k]>0){
-      lambda_k=matrix(0,nvar,nfactors)
-      for(j in 1:nvar){
-        nfactors_j=sum(design[j,])
-        indfactors_j=(design[j,]==1)
-        sumSbeta=matrix(0,1,nfactors_j)
-        sumthetaalpha=matrix(0,nfactors_j,nfactors_j)
-        summeansalpha=matrix(0,1,nfactors_j)
+  if(EFA==1){
+    for(k in 1:nclust){
+      if(N_ks[k]>0){
+        lambda_k=matrix(0,nvar,nfactors)
+        sumSbetas=matrix(list(0),1,nvar)
+        sumthetaalphas=matrix(list(0),1,nvar)
+        summeansalphas=matrix(list(0),1,nvar)
         for(g in 1:ngroup){
           if(N_gks[g,k]>0){
             psi_g=Psi_gs[[g]]
@@ -1093,23 +1092,76 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
             theta_gk=Theta_gks[[g,k]]
             alpha_gk=alpha_gks[[g,k]]
             meanexpeta_gk=meanexpEta_gks[[g,k]]
-            if(nfactors_j<nfactors){
-              beta_gk=beta_gk[indfactors_j, ,drop=FALSE]
+            #talpha_gk=t(alpha_gk)
+            N_gks_psi_g=N_gks[g,k]/diag(psi_g)
+            S_gktbeta_gk=S_gk%*%t(beta_gk)
+            theta_gk_latmeanscp=(theta_gk+t(alpha_gk+meanexpeta_gk)%*%alpha_gk)
+            meansalpha=((mean_gs[g,]-tau_ks[k,])%*%alpha_gk)
+            for(j in 1:nvar){
+              # nfactors_j=sum(design[j,])
+              # indfactors_j=(design[j,]==1)
+              # if(nfactors_j<nfactors){
+              #   beta_gk=beta_gk[indfactors_j, ,drop=FALSE]
+              # }
+              # theta_gk=theta_gk[indfactors_j,indfactors_j]
+              # alpha_gk=alpha_gk[indfactors_j]
+              # meanexpeta_gk=meanexpeta_gk[indfactors_j]
+              # if(g==1){
+              #   sumSbetas[[j]]=matrix(0,1,nfactors)
+              #   sumthetaalphas[[j]]=matrix(0,nfactors,nfactors)
+              #   summeansalphas[[j]]=matrix(0,1,nfactors)
+              # }
+              sumSbetas[[j]]=sumSbetas[[j]]+N_gks_psi_g[j]*S_gktbeta_gk[j, ,drop=FALSE]
+              sumthetaalphas[[j]]=sumthetaalphas[[j]]+N_gks_psi_g[j]*theta_gk_latmeanscp
+              summeansalphas[[j]]=summeansalphas[[j]]+N_gks_psi_g[j]*meansalpha[j, ,drop=FALSE]
             }
-            theta_gk=theta_gk[indfactors_j,indfactors_j]
-            alpha_gk=alpha_gk[indfactors_j]
-            meanexpeta_gk=meanexpeta_gk[indfactors_j]
-            talpha_gk=t(alpha_gk)
-            sumSbeta=sumSbeta+(N_gks[g,k]/psi_g[j,j])*S_gk[j,]%*%t(beta_gk)
-            sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j,j])*(theta_gk+(alpha_gk+meanexpeta_gk)%*%talpha_gk)
-            summeansalpha=summeansalpha+(N_gks[g,k]/psi_g[j,j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
+
           }
         }
-        lambda_k[j,indfactors_j]= t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
+        for(j in 1:nvar){
+          #indfactors_j=(design[j,]==1)
+          lambda_k[j,]= t(solve(sumthetaalphas[[j]],t(sumSbetas[[j]]+summeansalphas[[j]])))
+        }
+        Lambda_ks[[k]]=lambda_k
       }
-      Lambda_ks[[k]]=lambda_k
+    }
+  } else {
+    for(k in 1:nclust){
+      if(N_ks[k]>0){
+        lambda_k=matrix(0,nvar,nfactors)
+        for(j in 1:nvar){
+          nfactors_j=sum(design[j,])
+          indfactors_j=(design[j,]==1)
+          sumSbeta=matrix(0,1,nfactors_j)
+          sumthetaalpha=matrix(0,nfactors_j,nfactors_j)
+          summeansalpha=matrix(0,1,nfactors_j)
+          for(g in 1:ngroup){
+            if(N_gks[g,k]>0){
+              psi_g=diag(Psi_gs[[g]])
+              S_gk=S_gks[[g,k]]
+              beta_gk=Beta_gks[[g,k]]
+              theta_gk=Theta_gks[[g,k]]
+              alpha_gk=alpha_gks[[g,k]]
+              meanexpeta_gk=meanexpEta_gks[[g,k]]
+              if(nfactors_j<nfactors){
+                beta_gk=beta_gk[indfactors_j, ,drop=FALSE]
+              }
+              theta_gk=theta_gk[indfactors_j,indfactors_j]
+              alpha_gk=alpha_gk[indfactors_j]
+              meanexpeta_gk=meanexpeta_gk[indfactors_j]
+              talpha_gk=t(alpha_gk)
+              sumSbeta=sumSbeta+(N_gks[g,k]/psi_g[j])*S_gk[j,]%*%t(beta_gk)
+              sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j])*(theta_gk+(alpha_gk+meanexpeta_gk)%*%talpha_gk)
+              summeansalpha=summeansalpha+(N_gks[g,k]/psi_g[j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
+            }
+          }
+          lambda_k[j,indfactors_j]= t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
+        }
+        Lambda_ks[[k]]=lambda_k
+      }
     }
   }
+
 
 
   # update unique variances
@@ -1123,18 +1175,19 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
         beta_gk=Beta_gks[[g,k]]
         theta_gk=Theta_gks[[g,k]]
 	      S_gk=S_gks[[g,k]]
-        sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*(lambda_k%*%(2*beta_gk%*%S_gk-theta_gk%*%t(lambda_k))) # modelimplied reduced covariance matrix on sample level, based on old structure matrix and sigma_gk, weighting based on new z_gks
+        #sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*(lambda_k%*%(2*beta_gk%*%S_gk-theta_gk%*%t(lambda_k))) # modelimplied reduced covariance matrix on sample level, based on old structure matrix and sigma_gk, weighting based on new z_gks
+        sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*rowSums(lambda_k*(2*S_gk%*%t(beta_gk)-lambda_k%*%theta_gk)) # faster way (result = vector), only works when no residual covariances!
       }
     }
-    psi_g=diag(diag(S_g-sum2SbetaB_BthetaB))
-    if (sum(diag(psi_g)<.0001)>0){ # track "heywood" cases
-      ind=diag(psi_g)<.0001
-      d=diag(psi_g);
-      d[ind]=0.0001;
-      psi_g=diag(d);
+    psi_g=diag(S_g)-sum2SbetaB_BthetaB # diag(diag(S_g-sum2SbetaB_BthetaB))
+    d=psi_g #diag(psi_g)
+    if (sum(d<.0001)>0){ # track "heywood" cases
+      ind=d<.0001
+      d[ind]=0.0001
+      psi_g=d # diag(psi_g)=d
       nractivatedconstraints=nractivatedconstraints+sum(ind)
     }
-    Psi_gs[[g]]=psi_g
+    Psi_gs[[g]]=diag(psi_g) #psi_g
   }
 
   # update factor (co)variances

@@ -971,7 +971,7 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
             alpha_gk=alpha_gks[[g,k]]
             meanexpeta_gk=meanexpEta_gks[[g,k]]
             sumSbeta=sumSbeta+N_gks[g,k]*S_gk%*%t(beta_gk)
-            sumthetaalpha=sumthetaalpha+N_gks[g,k]*(theta_gk+(t(alpha_gk)+t(meanexpeta_gk))%*%alpha_gk)
+            sumthetaalpha=sumthetaalpha+N_gks[g,k]*(theta_gk+(t(alpha_gk+meanexpeta_gk))%*%alpha_gk)
             summeansalpha=summeansalpha+N_gks[g,k]*((mean_gs[g,]-tau_ks[k,])%*%alpha_gk)
           }
         }
