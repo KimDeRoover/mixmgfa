@@ -12,7 +12,14 @@ devtools::install_github("KimDeRoover/mixmgfa")
 
 
 # How to use `mixmgfa`
-For example, to cluster groups on loadings and intercepts, with the number of clusters ranging from 1 to 6:
+The data you analyze with `mixmgfa` should be:
+- a list consisting of "$covariances" (a vertically concatenated matrix or list of group-specific (co)variance matrices) and "$means" (a matrix with rows = group-specific means)
+- or a matrix containing the vertically concatenated raw data for all groups (all rows belonging to the same group should be place directly below one another)
+
+Note: In case of raw data input without specifying `N_gs`, the first column of the data should contain group IDs. The remaining variables are then factor-analyzed.
+When using group-specific covariances and means as input, you need to specify `N_gs`. `N_gs` is a vector specifying the sample size (number of rows) for each group, in the same order as the groups appear in the data.
+
+For example, to cluster groups on loadings and intercepts, with the number of clusters ranging from 1 to 6, you use the following command:
 
 ```javascript
 Output<-mixmgfa(data,N_gs,nfactors=1,cluster.spec=c("loadings","intercepts"),nsclust=c(1,6),maxiter=5000,nruns=25,design=design)
@@ -51,7 +58,7 @@ summary(Output$MMGFAsolutions,nclust=3)
 ```
 
 
-Note that it can happen that you want to repeat some analyses with more random starts to avoid local maxima (e.g., the ones with larger numbers of clusters), and/or that you want to add analyses with even more clusters. In that case, you can do so by modifying the ```nruns``` and/or ```nsclust``` options. Afterwards, you can vertically concatenate multiple overview tables obtained from the ```mixmgfa``` function and use the ```CHull_mixmgfa``` function to perform the CHull:
+Note that it can happen that you want to repeat some analyses with more random starts to avoid local maxima (e.g., the ones with larger numbers of clusters), with more iterations to reach convergence, and/or that you want to add analyses with even more clusters. In that case, you can do so by modifying the `nruns`, `maxiter` and/or `nsclust` options. Afterwards, you can vertically concatenate multiple overview tables obtained from the ```mixmgfa``` function and use the ```CHull_mixmgfa``` function to perform the CHull:
 ```javascript
 NewOverviewTable<-CHull_mixmgfa(MergedOverviews)
 
