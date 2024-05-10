@@ -1118,7 +1118,7 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
     S_g=S_gs[[g]]
     sum2SbetaB_BthetaB=0
     for(k in 1:nclust){
-      if(N_ks[k]>0){
+      if(N_gks[g,k]>0){
         lambda_k=Lambda_ks[[k]]
         beta_gk=Beta_gks[[g,k]]
         theta_gk=Theta_gks[[g,k]]
