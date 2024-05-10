@@ -4,10 +4,12 @@
 \alias{plot.mixmgfaMS}
 \title{Model selection plots for mixture multigroup factor analyses}
 \usage{
-\method{plot}{mixmgfaMS}(x, ...)
+\method{plot}{mixmgfaMS}(x, AIC = 0, ...)
 }
 \arguments{
 \item{x}{Outputobject$overview (class "mixmgfaMS") resulting from mixmgfa function}
+
+\item{AIC}{Specify AIC = 1 if you would like to plot the AIC instead of the BIC_G in the first plot}
 }
 \description{
 Model selection plots for mixture multigroup factor analyses

@@ -14,7 +14,12 @@ mixmgfa(
   nruns = 25,
   design = 0,
   rotation = 0,
-  preselect = 10
+  preselect = 10,
+  targetT = 0,
+  targetW = 0,
+  rescov = 0,
+  parcomp = 1,
+  freecores = 2
 )
 }
 \arguments{
@@ -27,10 +32,10 @@ If left unspecified in case of covariance matrix & means input, a warning is iss
 
 \item{nfactors}{Number of factors.}
 
-\item{cluster.spec}{Measurement parameters you want to cluster the groups on; "loadings", "intercepts", "residuals", c("loadings","intercepts"), c("intercepts","residuals"), or c("loadings","intercepts","residuals").
+\item{cluster.spec}{Measurement parameters you want to cluster the groups on; "loadings", "intercepts", "residuals", c("loadings","intercepts"), c("intercepts","residuals"), c("loadings","residuals"), or c("loadings","intercepts","residuals").
 Note: cluster.spec = "intercepts" and cluster.spec = c("intercepts","residuals") impose invariant loadings across all groups, cluster.spec = "residuals" also imposes invariant intercepts across all groups.}
 
-\item{nsclust}{Vector of length two, indicating the minimal and maximal number of clusters (it is recommended to set the minimal number to one).}
+\item{nsclust}{Vector of length one or two indicating the number(s) of clusters. In case of length two, the vector indicates the minimal and maximal number of clusters (it is recommended to set the minimal number to one).}
 
 \item{maxiter}{Maximum number of iterations used in each MMG-FA analysis. Increase in case of non-convergence.}
 
@@ -39,24 +44,36 @@ Note: cluster.spec = "intercepts" and cluster.spec = c("intercepts","residuals")
 \item{design}{For confirmatory factor analysis, matrix (with ncol = nfactors) indicating position of zero loadings with '0' and non-zero loadings with '1'. Leave unspecified for exploratory factor analysis (EFA).
 (Using different design matrices for different clusters is currently not supported.)}
 
-\item{rotation}{Rotation criterion to use in case of EFA; currently either "oblimin" or "varimax" (0 = no rotation). (Note: For now, you need to install the GPArotation package for using rotation options.)}
+\item{rotation}{Rotation criterion to use in case of EFA; currently either "oblimin", "varimax" or "target" (i.e., semi-specified oblique Procrustes rotation), whereas 0 = no rotation. (Note: The GPArotation package is loaded or installed for rotation.)}
 
 \item{preselect}{Percentage of best starts taken in pre-selection of initial partitions (for huge datasets, increase to speed up multistart procedure).}
+
+\item{targetT}{Target matrix to use when rotation = "target". Note that the same target is used for all clusters. For using cluster-specific target matrices, use rotation = 0 and rotate the cluster-specific factors afterwards with the GPFobl function of GPArotation.}
+
+\item{targetW}{Weights to be used when rotation = "target". You can set an entire row to zero to make sure that the simple structure is not messed up by a 'complex variable' (i.e., with strong loadings for multiple factors). Set all weights equal to '1' if you prefer fully specified target rotation. When left unspecified while rotation = target, the default is a targetW where the zeros in the target get a weight of '1' and the non-zeros in the target get a weight of '0'. If this results in all zero weights or too many zeros for the rotation to be identified, a fully specified target rotation (all weights equal to '1') is used instead.}
+
+\item{rescov}{Binary matrix to specify residual item covariances. Not yet supported in the current package version!}
+
+\item{parcomp}{Specified as 0 or 1 to indicate if parallel computation should be performed to speed up the computation. If parcomp==1, analyses with different numbers of clusters are executed simultaneously by using multiple cores on your machine.}
+
+\item{freecores}{The number of cores kept free for other tasks during parallel computation (if parcomp == 1).}
 }
 \value{
 Output object (list) with:
 
-$overview = overview of fitted MMG-FA solutions with loglikelihood (loglik), number of parameters (nrpars), BIC_N (using total number of observations as sample size), BIC_G (using number of groups as sample size),
+$overview = overview of fitted MMG-FA solutions with loglikelihood (loglik), number of parameters (nrpars), BIC_N (using total number of observations as sample size), BIC_G (using number of groups as sample size), AIC,
 CHull screeratios (NA = scree ratio could not be computed due to solution being first, last or not on the hull), convergence (1 = converged) and number of activated constraints on the unique variances.
 
 $MMGFAsolutions = list of MMG-FA solutions with different numbers of clusters.
          Access parameter values of solution with a specific number of clusters as, for example, OutputObject$MMGFAsolutions$"2.clusters".
 }
 \description{
-Perform mixture multigroup factor analyses (MMG-FA) with multiple numbers of clusters.
+Perform mixture multigroup factor analyses (MMG-FA) with multiple numbers of clusters. MMG-FA aims to find clusters of groups with equivalent measurement model parameters (i.e., measurement invariance).
 }
 \references{
-De Roover, K., Vermunt, J. K., & Ceulemans, E. (2020). Mixture multigroup factor analysis for unraveling factor loading noninvariance across many groups. Psychological Methods. Advance online publication.
+De Roover, K., Vermunt, J. K., & Ceulemans, E. (2022). Mixture multigroup factor analysis for unraveling factor loading noninvariance across many groups. Psychological Methods, 27(3), 281-306.
 
 De Roover, K. (2021). Finding clusters of groups with measurement invariance: Unraveling intercept non-invariance with mixture multigroup factor analysis. Structural Equation Modeling: A Multidisciplinary Journal, 28(5), 663-683.
+
+Leitgöb, H., Seddig, D., Asparouhov, T., Behr, D., Davidov, E., De Roover, K., ... & van de Schoot, R. (2023). Measurement invariance in the social sciences: Historical development, methodological challenges, state of the art, and future perspectives. Social Science Research, 110, 102805.
 }
