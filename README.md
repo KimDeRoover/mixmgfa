@@ -38,7 +38,7 @@ plot(Output$overview)
 Note that you can choose to plot the AIC instead of the BIC_G by using the ```AIC = 1``` option. A CHull plot cannot be generated when you performed analyses with only one or two different numbers of clusters.
 
 
-For accessing the corresponding solution, use, for example:
+For accessing the selected solution, use, for example:
 ```javascript
 Output$MMGFAsolutions$`3.clusters`
 
