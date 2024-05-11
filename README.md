@@ -30,7 +30,7 @@ For using EFA within clusters, `design` should be left unspecified. For using CF
 **Please note that the package currently cannot deal with missing data.**
 
 
-For selecting the number of clusters, inspect Output$overview and the plots obtained by:
+For selecting the best number of clusters for your data, inspect Output$overview and the plots obtained by:
 ```javascript
 plot(Output$overview)
 
