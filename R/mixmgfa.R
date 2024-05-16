@@ -48,7 +48,7 @@
 #' Leitgöb, H., Seddig, D., Asparouhov, T., Behr, D., Davidov, E., De Roover, K., ... & van de Schoot, R. (2023). Measurement invariance in the social sciences: Historical development, methodological challenges, state of the art, and future perspectives. Social Science Research, 110, 102805.
 
 #' @export
-mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","intercepts","residuals"),nsclust = c(1,5),maxiter = 5000,nruns = 25,design=0,rotation=0,preselect = 10,targetT=0,targetW=0,rescov=0,parcomp=1,freecores=2){
+mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","intercepts","residuals"),nsclust = c(1,5),maxiter = 5000,nruns = 25,design=0,rotation=0,preselect = 10,targetT=0,targetW=0,rescov=0,parcomp=0,freecores=2){
   if(rotation!=0){
     if(rotation=="varimax" || rotation=="Varimax" || rotation=="VARIMAX"){
       rotation="varimax"
