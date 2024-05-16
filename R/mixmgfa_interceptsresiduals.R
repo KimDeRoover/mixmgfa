@@ -1,4 +1,4 @@
-#' Mixture multigroup factor analysis for intercept and residual variance (non-)variance
+#' Mixture multigroup factor analysis for intercept and residual variance (non-)invariance
 # --------------------------------------------------------------------------------------
 # Code written by Kim De Roover
 
