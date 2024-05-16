@@ -1,4 +1,4 @@
-#' Mixture multigroup factor analysis for loadings and intercepts (non-)variance
+#' Mixture multigroup factor analysis for loadings and intercepts (non-)invariance
 # ----------------------------------------------------------------
 # Code written by Kim De Roover
 
