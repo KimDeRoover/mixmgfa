@@ -31,7 +31,7 @@
 #'
 #' $Phi_gks = group- and cluster-specific factor (co)variances, access (co)variances of group g in cluster k via Phi_gks[[g,k]]
 #'
-#' $tau_ks = group-specific means, access intercepts of cluster k via tau_ks[k,]
+#' $tau_ks = cluster-specific intercepts, access intercepts of cluster k via tau_ks[k,]
 #'
 #' $alpha_gks = group- and cluster-specific factor means, access factor means of group g in cluster k via alpha_gks[[g,k]]
 #'
