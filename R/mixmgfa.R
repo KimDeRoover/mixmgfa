@@ -120,7 +120,7 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
   options(warn=-1)
 
   if (is.matrix(data)==TRUE | is.data.frame(data)==TRUE){ # input is raw data matrix
-    if (is.null(N_gs)){ # create N_gs if not given as input
+    if (is.null(N_gs) || !exists("N_gs")){ # create N_gs if not given as input
       T=table(data[,1]) #N_gs<-tabulate(data[,1])
       N_gs=as.numeric(T)
       grouplabels=names(T)
