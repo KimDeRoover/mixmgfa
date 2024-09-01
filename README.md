@@ -25,7 +25,9 @@ For example, to cluster groups on loadings and intercepts, with the number of cl
 Output<-mixmgfa(data,N_gs,nfactors=1,cluster.spec=c("loadings","intercepts"),nsclust=c(1,6),maxiter=5000,nruns=25,design=design)
 
 ```
-For using EFA within clusters, `design` should be left unspecified. For using CFA within clusters, `design` should be a matrix with as many rows as there are variables and as many columns as nfactors, containing zeros for zero loadings and ones for nonzero loadings. It is possible to specify only one number of clusters, for example, `nsclust = 2`. When performing analyses with many different numbers of clusters, you may encounter longer computation times (especially for larger numbers of clusters and larger data sets). You can use the `parcomp = 1` option to mitigate this. The analyses are then performed in parallel instead of sequentially. By default, two cores on your machine are kept free for other tasks, but you can modify this by means of the `freecores` option.
+For using EFA within clusters, `design` should be left unspecified. For using CFA within clusters, `design` should be a matrix with as many rows as there are variables and as many columns as nfactors, containing zeros for zero loadings and ones for nonzero loadings. 
+
+It is possible to specify only one number of clusters, for example, `nsclust = 2`. When performing analyses with many different numbers of clusters, you may encounter longer computation times (especially for larger numbers of clusters and larger data sets). You can use the `parcomp = 1` option to mitigate this. The analyses are then performed in parallel instead of sequentially. By default, two cores on your machine are kept free for other tasks, but you can modify this by means of the `freecores` option.
 
 **Please note that the package currently cannot deal with missing data.**
 
@@ -65,6 +67,12 @@ NewOverviewTable<-CHull_mixmgfa(MergedOverviews)
 ```
 This new overview table only contains the most optimal solution for each number of clusters, is sorted according to the numbers of clusters and includes the (updated) CHull scree ratios. You can get the CHull plot by using this overview table as an input to the ```plot``` function (as indicated above).
 
+To perform or adjust rotation of an output object, and/or to rescale the output to marker variable scale (with one loading per factor equal to 1, very typical for CFA), the  ```ScaleRotateMixmgfa``` function can be used:
+```javascript
+NewOutput<-ScaleRotateMixmgfa(Output,N_gs,cluster.spec=c("loadings","intercepts"),rescale=1,markers=markers,rotation="geomin")
+
+```
+In this way, you don't need to re-estimate the solutions when you want to change the scale or rotations. It also counter-rotates the factor (co)variances and factor means. Note that `markers` should be a matrix with as many rows as there are variables and as many columns as nfactors, containing ones for the markers (i.e., the loadings that should become one) and zeros for the other loadings. 
 
 # Contribution
 This package is a work-in-progress, so please report bugs and check back for updates.
