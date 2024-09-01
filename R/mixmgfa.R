@@ -22,7 +22,7 @@
 #' @param nruns Number of (preselected) random starts (important for avoiding local maxima in case of few groups and/or small groups).
 #' @param design For confirmatory factor analysis, matrix (with ncol = nfactors) indicating position of zero loadings with '0' and non-zero loadings with '1'. Leave unspecified for exploratory factor analysis (EFA).
 #'          (Using different design matrices for different clusters is currently not supported.)
-#' @param rotation Rotation criterion to use in case of EFA; currently either "oblimin", "varimax" or "target" (i.e., semi-specified oblique Procrustes rotation), whereas 0 = no rotation. (Note: The GPArotation package is loaded or installed for rotation.)
+#' @param rotation Rotation criterion to use in case of EFA; currently either "oblimin", "geomin", "varimax" or "target" (i.e., semi-specified oblique Procrustes rotation), whereas 0 = no rotation. (Note: The GPArotation package is loaded or installed for rotation.)
 #' @param preselect Percentage of best starts taken in pre-selection of initial partitions (for huge datasets, increase to speed up multistart procedure).
 #' @param targetT Target matrix to use when rotation = "target". Note that the same target is used for all clusters. For using cluster-specific target matrices, use rotation = 0 and rotate the cluster-specific factors afterwards with the GPFobl function of GPArotation.
 #' @param targetW Weights to be used when rotation = "target". You can set an entire row to zero to make sure that the simple structure is not messed up by a 'complex variable' (i.e., with strong loadings for multiple factors). Set all weights equal to '1' if you prefer fully specified target rotation. When left unspecified while rotation = target, the default is a targetW where the zeros in the target get a weight of '1' and the non-zeros in the target get a weight of '0'. If this results in all zero weights or too many zeros for the rotation to be identified, a fully specified target rotation (all weights equal to '1') is used instead.
@@ -54,6 +54,8 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
       rotation="varimax"
     } else if(rotation=="oblimin" || rotation=="Oblimin" || rotation=="OBLIMIN"){
       rotation="oblimin"
+    } else if(rotation=="geomin" || rotation=="Geomin" || rotation=="GEOMIN"){
+      rotation="geomin"
     } else if(rotation=="target" || rotation=="Target" || rotation=="TARGET"){
       rotation="target"
     } else {
@@ -128,11 +130,10 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
       N_gs=as.matrix(N_gs)
       checkfirstcolumn=0
       firstcolID=TRUE
-    } else { # if N_gs is given as input, check whether first column of data and contains group ID (below)
+      # Note: without N_gs and without a first column with group ID, the first variable is taken as the group ID so that the N_gs created above matches this column
+    } else { # if N_gs is given as input, check whether first column of data contains group ID (below)
       checkfirstcolumn=1
-      firstcolID=FALSE
-      cat("Note: The data should be ordered according to the group memberships (with all rows of a group placed directly below one another). Reorder the data and repeat the analysis if this is not the case.")
-      cat("\n")
+      firstcolID=FALSE # will become TRUE below if tabulation of first column matches N_gs
     }
     ngroup <- length(N_gs)
     if(nrow(N_gs)!=ngroup || is.null(nrow(N_gs))){ # make sure N_gs is a column vector
@@ -142,19 +143,19 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
       }
       N_gs <- N_gs_colvec
     }
-    if(sum(diff(data[,1])!=0)>ngroup){
-      stop("The analysis cannot be performed because the data matrix is not ordered according to the group labels in column one. All rows of a group should be placed directly below one another.")
+    if(sum(N_gs)!=nrow(data)){ # N_gs does not match the data size
+      stop("The analysis cannot be performed because the specified N_gs vector does not match the data size.")
     }
     if (checkfirstcolumn==1){
+      if(sum(diff(data[,1])!=0)>ngroup){
+        stop("The analysis cannot be performed because the data matrix is not ordered according to the group labels in column one. All rows of a group should be placed directly below one another.")
+      }
       T<-table(data[,1])
       checkcol1=as.numeric(T)
       checkcol1=checkcol1[checkcol1!=0]
       checkcol1=matrix(checkcol1,nrow=length(checkcol1),ncol=1)
       firstcolID=all.equal(N_gs,checkcol1)
       firstcolID=(firstcolID[1]==TRUE)
-      # if(firstcolID){
-      #   grouplabels=names(T)
-      # }
     }
 
     if (firstcolID){
@@ -163,6 +164,8 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
       grouplabels=unique(data[,1])
       varlabels=colnames(data[,2:(nvar+1)])
     } else {
+      cat("Note: The data should be ordered according to the group memberships (with all rows of a group placed directly below one another). Reorder the data and repeat the analysis if this is not the case.")
+      cat("\n")
       nvar <- ncol(data)
       Xsup=as.matrix(data)
       grouplabels=rownames(N_gs)

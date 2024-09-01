@@ -1049,14 +1049,15 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
   }
 
   # update factor (co)variances
-  for(g in 1:ngroup){
-    for(k in 1:nclust){
-      if(N_ks[k]>0){
-        theta_gk=Theta_gks[[g,k]]
-        Phi_gks[[g,k]]=theta_gk
-      }
-    }
-  }
+  # for(g in 1:ngroup){
+  #   for(k in 1:nclust){
+  #     if(N_ks[k]>0){
+  #       theta_gk=Theta_gks[[g,k]]
+  #       Phi_gks[[g,k]]=theta_gk
+  #     }
+  #   }
+  # }
+  Phi_gks=Theta_gks
 
 
   # update (inv)Sigma_gks
