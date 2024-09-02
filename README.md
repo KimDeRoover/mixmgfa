@@ -67,7 +67,7 @@ NewOverviewTable<-CHull_mixmgfa(MergedOverviews)
 ```
 This new overview table only contains the most optimal solution for each number of clusters, is sorted according to the numbers of clusters and includes the (updated) CHull scree ratios. You can get the CHull plot by using this overview table as an input to the ```plot``` function (as indicated above).
 
-To perform or adjust rotation of an output object, and/or to rescale the output to marker variable scale (with one loading per factor equal to 1, very typical for CFA), the  ```ScaleRotateMixmgfa``` function can be used:
+To perform or adjust rotation for an output object, and/or to rescale the output to marker variable scale (with one loading per factor equal to 1, very typical for CFA), the  ```ScaleRotateMixmgfa``` function can be used:
 ```javascript
 NewOutput<-ScaleRotateMixmgfa(Output,N_gs,cluster.spec=c("loadings","intercepts"),rescale=1,markers=markers,rotation="geomin")
 
