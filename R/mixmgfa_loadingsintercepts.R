@@ -1094,38 +1094,70 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
             meanexpeta_gk=meanexpEta_gks[[g,k]]
             #talpha_gk=t(alpha_gk)
             N_gks_psi_g=N_gks[g,k]/diag(psi_g)
-            S_gktbeta_gk=S_gk%*%t(beta_gk)
-            theta_gk_latmeanscp=(theta_gk+t(alpha_gk+meanexpeta_gk)%*%alpha_gk)
+            S_gktbeta_gk=tcrossprod(S_gk,beta_gk)
+            theta_gk_latmeanscp=theta_gk+crossprod(alpha_gk+meanexpeta_gk,alpha_gk)
             meansalpha=((mean_gs[g,]-tau_ks[k,])%*%alpha_gk)
             for(j in 1:nvar){
-              # nfactors_j=sum(design[j,])
-              # indfactors_j=(design[j,]==1)
-              # if(nfactors_j<nfactors){
-              #   beta_gk=beta_gk[indfactors_j, ,drop=FALSE]
-              # }
-              # theta_gk=theta_gk[indfactors_j,indfactors_j]
-              # alpha_gk=alpha_gk[indfactors_j]
-              # meanexpeta_gk=meanexpeta_gk[indfactors_j]
-              # if(g==1){
-              #   sumSbetas[[j]]=matrix(0,1,nfactors)
-              #   sumthetaalphas[[j]]=matrix(0,nfactors,nfactors)
-              #   summeansalphas[[j]]=matrix(0,1,nfactors)
-              # }
               sumSbetas[[j]]=sumSbetas[[j]]+N_gks_psi_g[j]*S_gktbeta_gk[j, ,drop=FALSE]
               sumthetaalphas[[j]]=sumthetaalphas[[j]]+N_gks_psi_g[j]*theta_gk_latmeanscp
               summeansalphas[[j]]=summeansalphas[[j]]+N_gks_psi_g[j]*meansalpha[j, ,drop=FALSE]
             }
-
           }
         }
         for(j in 1:nvar){
-          #indfactors_j=(design[j,]==1)
           lambda_k[j,]= t(solve(sumthetaalphas[[j]],t(sumSbetas[[j]]+summeansalphas[[j]])))
         }
         Lambda_ks[[k]]=lambda_k
       }
     }
   } else {
+    # for(k in 1:nclust){
+    #   if(N_ks[k]>0){
+    #     lambda_k=matrix(0,nvar,nfactors)
+    #     sumSbetas=matrix(list(0),1,nvar)
+    #     sumthetaalphas=matrix(list(0),1,nvar)
+    #     summeansalphas=matrix(list(0),1,nvar)
+    #     for(g in 1:ngroup){
+    #       if(N_gks[g,k]>0){
+    #         psi_g=Psi_gs[[g]]
+    #         S_gk=S_gks[[g,k]]
+    #         beta_gk=Beta_gks[[g,k]]
+    #         theta_gk=Theta_gks[[g,k]]
+    #         alpha_gk=alpha_gks[[g,k]]
+    #         meanexpeta_gk=meanexpEta_gks[[g,k]]
+    #         #talpha_gk=t(alpha_gk)
+    #         N_gks_psi_g=N_gks[g,k]/diag(psi_g)
+    #         S_gktbeta_gk=S_gk%*%t(beta_gk)
+    #         theta_gk_latmeanscp=(theta_gk+t(alpha_gk+meanexpeta_gk)%*%alpha_gk)
+    #         meansalpha=((mean_gs[g,]-tau_ks[k,])%*%alpha_gk)
+    #         for(j in 1:nvar){ # simultaneously for all variables with same non-zero loadings? Based on unique(design,MARGIN=1)?
+    #           # nfactors_j=sum(design[j,])
+    #           # indfactors_j=(design[j,]==1)
+    #           # if(nfactors_j<nfactors){
+    #           #   beta_gk=beta_gk[indfactors_j, ,drop=FALSE]
+    #           # }
+    #           # theta_gk=theta_gk[indfactors_j,indfactors_j]
+    #           # alpha_gk=alpha_gk[indfactors_j]
+    #           # meanexpeta_gk=meanexpeta_gk[indfactors_j]
+    #           # if(g==1){
+    #           #   sumSbetas[[j]]=matrix(0,1,nfactors)
+    #           #   sumthetaalphas[[j]]=matrix(0,nfactors,nfactors)
+    #           #   summeansalphas[[j]]=matrix(0,1,nfactors)
+    #           # }
+    #           sumSbetas[[j]]=sumSbetas[[j]]+N_gks_psi_g[j]*S_gktbeta_gk[j, ,drop=FALSE]
+    #           sumthetaalphas[[j]]=sumthetaalphas[[j]]+N_gks_psi_g[j]*theta_gk_latmeanscp
+    #           summeansalphas[[j]]=summeansalphas[[j]]+N_gks_psi_g[j]*meansalpha[j, ,drop=FALSE]
+    #         }
+    #
+    #       }
+    #     }
+    #     for(j in 1:nvar){
+    #       #indfactors_j=(design[j,]==1)
+    #       lambda_k[j,]= t(solve(sumthetaalphas[[j]],t(sumSbetas[[j]]+summeansalphas[[j]])))
+    #     }
+    #     Lambda_ks[[k]]=lambda_k
+    #   }
+    # }
     for(k in 1:nclust){
       if(N_ks[k]>0){
         lambda_k=matrix(0,nvar,nfactors)
@@ -1149,13 +1181,16 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
               theta_gk=theta_gk[indfactors_j,indfactors_j]
               alpha_gk=alpha_gk[indfactors_j]
               meanexpeta_gk=meanexpeta_gk[indfactors_j]
-              talpha_gk=t(alpha_gk)
-              sumSbeta=sumSbeta+(N_gks[g,k]/psi_g[j])*S_gk[j,]%*%t(beta_gk)
-              sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j])*(theta_gk+(alpha_gk+meanexpeta_gk)%*%talpha_gk)
+              sumSbeta=sumSbeta+(N_gks[g,k]/psi_g[j])*tcrossprod(S_gk[j,],beta_gk)
+              sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j])*(theta_gk+tcrossprod(alpha_gk+meanexpeta_gk,alpha_gk))
               summeansalpha=summeansalpha+(N_gks[g,k]/psi_g[j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
             }
           }
-          lambda_k[j,indfactors_j]= t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
+          if(nfactors_j==1){
+            lambda_k[j,indfactors_j]= (sumSbeta+summeansalpha)/sumthetaalpha
+          } else {
+            lambda_k[j,indfactors_j]= t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
+          }
         }
         Lambda_ks[[k]]=lambda_k
       }
@@ -1176,7 +1211,7 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
         theta_gk=Theta_gks[[g,k]]
 	      S_gk=S_gks[[g,k]]
         #sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*(lambda_k%*%(2*beta_gk%*%S_gk-theta_gk%*%t(lambda_k))) # modelimplied reduced covariance matrix on sample level, based on old structure matrix and sigma_gk, weighting based on new z_gks
-        sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*rowSums(lambda_k*(2*S_gk%*%t(beta_gk)-lambda_k%*%theta_gk)) # faster way (result = vector), only works when no residual covariances!
+        sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*rowSums(lambda_k*(2*tcrossprod(S_gk,beta_gk)-lambda_k%*%theta_gk)) # faster way (result = vector), only works when no residual covariances!
       }
     }
     psi_g=diag(S_g)-sum2SbetaB_BthetaB # diag(diag(S_g-sum2SbetaB_BthetaB))

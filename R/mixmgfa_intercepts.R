@@ -1129,7 +1129,7 @@ mixmgfa_intercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactors,design
       psi_g=Psi_gs[[g]]
       S_g=S_gs[[g]]
       beta_g=Beta_gs[[g]]
-      if(EFA==0){
+      if(nfactors_j<nfactors){
         beta_g=beta_g[d_j, ,drop=FALSE]
       }
       sumSbeta=sumSbeta+(N_gs[g]/psi_g[j,j])*tcrossprod(S_g[j,],beta_g)
@@ -1141,13 +1141,17 @@ mixmgfa_intercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactors,design
           theta_gk=theta_gk[d_j,d_j]
           alpha_gk=alpha_gk[d_j]
           meanexpeta_gk=meanexpeta_gk[d_j]
-          talpha_gk=t(alpha_gk)
-          sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j,j])*(theta_gk+(alpha_gk+meanexpeta_gk)%*%talpha_gk)
+          #talpha_gk=t(alpha_gk)
+          sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j,j])*(theta_gk+tcrossprod(alpha_gk+meanexpeta_gk,alpha_gk))
           summeansalpha=summeansalpha+(N_gks[g,k]/psi_g[j,j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
         }
       }
     }
-    Lambda[j,design[j,]==1]= t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
+    if(nfactors_j==1){
+      Lambda[j,d_j]= (sumSbeta+summeansalpha)/sumthetaalpha
+    } else {
+      Lambda[j,d_j]= t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
+    }
   }
   tLambda=t(Lambda)
 

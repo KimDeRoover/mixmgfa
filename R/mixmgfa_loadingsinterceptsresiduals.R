@@ -970,8 +970,8 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
             theta_gk=Theta_gks[[g,k]]
             alpha_gk=alpha_gks[[g,k]]
             meanexpeta_gk=meanexpEta_gks[[g,k]]
-            sumSbeta=sumSbeta+N_gks[g,k]*S_gk%*%t(beta_gk)
-            sumthetaalpha=sumthetaalpha+N_gks[g,k]*(theta_gk+(t(alpha_gk+meanexpeta_gk))%*%alpha_gk)
+            sumSbeta=sumSbeta+N_gks[g,k]*tcrossprod(S_gk,beta_gk)
+            sumthetaalpha=sumthetaalpha+N_gks[g,k]*(theta_gk+crossprod(alpha_gk+meanexpeta_gk,alpha_gk))
             summeansalpha=summeansalpha+N_gks[g,k]*((mean_gs[g,]-tau_ks[k,])%*%alpha_gk)
           }
         }
@@ -1002,9 +1002,9 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
               alpha_gk=alpha_gk[d_j]
               meanexpeta_gk=meanexpEta_gks[[g,k]]
               meanexpeta_gk=meanexpeta_gk[d_j]
-              talpha_gk=t(alpha_gk)
+              #talpha_gk=t(alpha_gk)
               sumSbeta=sumSbeta+(N_gks[g,k])*S_gk[j,]%*%t(beta_gk)
-              sumthetaalpha=sumthetaalpha+(N_gks[g,k])*(theta_gk+(alpha_gk+meanexpeta_gk)%*%talpha_gk)
+              sumthetaalpha=sumthetaalpha+(N_gks[g,k])*(theta_gk+tcrossprod(alpha_gk+meanexpeta_gk,alpha_gk))
               summeansalpha=summeansalpha+(N_gks[g,k])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
             }
           }

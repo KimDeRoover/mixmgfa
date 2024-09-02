@@ -49,6 +49,12 @@
 
 #' @export
 mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","intercepts","residuals"),nsclust = c(1,5),maxiter = 5000,nruns = 25,design=0,rotation=0,preselect = 10,targetT=0,targetW=0,rescov=0,parcomp=0,freecores=2){
+
+  allowed=c("loadings","intercepts","residuals")
+  if(sum(is.element(cluster.spec,allowed)==FALSE)>0){
+    stop("The specification of cluster.spec seems to contain an error.")
+  }
+
   if(rotation!=0){
     if(rotation=="varimax" || rotation=="Varimax" || rotation=="VARIMAX"){
       rotation="varimax"
@@ -104,19 +110,20 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     }
   }
 
-  if(!require(doParallel)){ # test if package is loaded
-    loadtest<-try(library(doParallel),silent=TRUE) # test if package can be loaded (if it is installed)
-    if(class(loadtest)=="try-error"){
-      install.packages("doParallel")
+  if(parcomp==1){
+    if(!require(doParallel)){ # test if package is loaded
+      loadtest<-try(library(doParallel),silent=TRUE) # test if package can be loaded (if it is installed)
+      if(class(loadtest)=="try-error"){
+        install.packages("doParallel")
+      }
+    }
+    if(!require(parallel)){ # test if package is loaded
+      loadtest<-try(library(parallel),silent=TRUE) # test if package can be loaded (if it is installed)
+      if(class(loadtest)=="try-error"){
+        install.packages("parallel")
+      }
     }
   }
-  if(!require(parallel)){ # test if package is loaded
-    loadtest<-try(library(parallel),silent=TRUE) # test if package can be loaded (if it is installed)
-    if(class(loadtest)=="try-error"){
-      install.packages("parallel")
-    }
-  }
-
 
 
   options(warn=-1)

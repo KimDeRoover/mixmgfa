@@ -787,7 +787,7 @@ mixmgfa_load_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_
             S_g=S_gs[[g]]
             beta_gk=Beta_gks[[g,k]]
             theta_gk=Theta_gks[[g,k]]
-            if(EFA==0){
+            if(nfactors_j<nfactors){
               beta_gk=beta_gk[d_j, ,drop=FALSE]
               #theta_gk=theta_gk[d_j,d_j]
             }
@@ -797,8 +797,12 @@ mixmgfa_load_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Beta_
             sumtheta_k=sumtheta_k+(N_gks[g,k]/psi_g[j])*theta_gk
           }
         }
-        lambda_k[j,d_j]= t(solve(sumtheta_k,t(sumSbeta_k)))
-        #lambda_k[j,d_j]= t(solve(sumtheta_k,tsumSbeta_k)) # not faster
+        if(nfactors_j==1){
+          lambda_k[j,d_j]= sumSbeta_k/sumtheta_k
+        } else {
+          lambda_k[j,d_j]= t(solve(sumtheta_k,t(sumSbeta_k)))
+          #lambda_k[j,d_j]= t(solve(sumtheta_k,tsumSbeta_k)) # not faster
+        }
       }
       Lambda_ks[[k]]=lambda_k
     }

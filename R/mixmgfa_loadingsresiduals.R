@@ -775,7 +775,11 @@ mixmgfa_loadres_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,Be
               sumtheta=sumtheta+(N_gks[g,k])*(theta_gk)
             }
           }
-          lambda_k[j,design[j,]==1]= t(solve(sumtheta,t(sumSbeta)))
+          if(nfactors_j==1){
+            lambda_k[j,d_j]= sumSbeta/sumtheta
+          } else {
+            lambda_k[j,d_j]= t(solve(sumtheta,t(sumSbeta)))
+          }
         }
         Lambda_ks[[k]]=lambda_k
       }
