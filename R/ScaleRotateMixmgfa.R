@@ -44,7 +44,7 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
   }
 
   if(is.element("loadings",cluster.spec)){
-    nfactors=ncol(Output[[1]]$clusterspecific.loadings)
+    nfactors=ncol(Output[[1]]$clusterspecific.loadings[[1]])
   } else {
     nfactors=ncol(Output[[1]]$invariant.loadings)
   }
