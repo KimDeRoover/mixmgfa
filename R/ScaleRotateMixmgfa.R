@@ -181,20 +181,20 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
   N=sum(N_gs)
   # start of loop over numbers of clusters
   for(nclust in nsclust[1]:nsclust[2]){
-
+    ind_nclust=nclust-nclust_min+1
     # if rotation is requested in case of EFA, make factors orthogonal
     # per cluster or overall
     if(EFA==1 && rotation!=0){
       if(is.element("loadings",cluster.spec)){
-        z_gks=Output[[nclust]]$clustermemberships
-        pi_ks=Output[[nclust]]$clusterproportions
+        z_gks=Output[[ind_nclust]]$clustermemberships
+        pi_ks=Output[[ind_nclust]]$clusterproportions
         N_gks=sweep(z_gks,N_gs,MARGIN=1,'*',check.margin = FALSE) #N_gks=diag(N_gs[,1])%*%z_gks
         N_ks=colSums(N_gks)
         for(k in 1:nclust){
           if(N_ks[k]>0){
             phi_k=matrix(0,nfactors,nfactors)
             for(g in 1:ngroup){
-              phi_gk=Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]
+              phi_gk=Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]
               phi_k=phi_k+(N_gks[g,k]/N_ks[k])*phi_gk;
             }
             # find matrix square root via eigenvalue decomposition
@@ -202,14 +202,14 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
             sqrtFscale=ed$vectors%*%diag(ed$values)^(1/2)%*%solve(ed$vectors)
             invsqrtFscale=solve(sqrtFscale) # This normally has a diagonal of ones, so that it only orthogonalizes, without rescaling
             for(g in 1:ngroup){
-              phi_gk=Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]
+              phi_gk=Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]
               phi_gk=invsqrtFscale%*%phi_gk%*%invsqrtFscale;
-              Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]=((phi_gk+t(phi_gk))/2); # enforce perfect symmetry
+              Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]=((phi_gk+t(phi_gk))/2); # enforce perfect symmetry
             }
-            Output[[nclust]]$clusterspecific.loadings[[k]]=Output[[nclust]]$clusterspecific.loadings[[k]]%*%sqrtFscale # compensate for (re)scaling of factors in the loadings
+            Output[[ind_nclust]]$clusterspecific.loadings[[k]]=Output[[ind_nclust]]$clusterspecific.loadings[[k]]%*%sqrtFscale # compensate for (re)scaling of factors in the loadings
             if(is.element("intercepts",cluster.spec)){
               for(g in 1:ngroup){ # transform the factor means accordingly
-                Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]=Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]%*%invsqrtFscale
+                Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]=Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]%*%invsqrtFscale
               }
             }
           }
@@ -217,7 +217,7 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
       } else {
         phi=matrix(0,nfactors,nfactors)
         for(g in 1:ngroup){
-          phi_g=Output[[nclust]]$groupspecific.factorcovariances[[g]]
+          phi_g=Output[[ind_nclust]]$groupspecific.factorcovariances[[g]]
           phi=phi+(N_gs[g]/N)*phi_g
         }
         # find matrix square root via eigenvalue decomposition
@@ -225,20 +225,20 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
         sqrtFscale=ed$vectors%*%diag(ed$values)^(1/2)%*%solve(ed$vectors)
         invsqrtFscale=solve(sqrtFscale)
         for(g in 1:ngroup){
-          phi_g=Output[[nclust]]$groupspecific.factorcovariances[[g]]
+          phi_g=Output[[ind_nclust]]$groupspecific.factorcovariances[[g]]
           phi_g=invsqrtFscale%*%phi_g%*%invsqrtFscale;
-          Output[[nclust]]$groupspecific.factorcovariances[[g]]=((phi_g+t(phi_g))/2); # enforce perfect symmetry
+          Output[[ind_nclust]]$groupspecific.factorcovariances[[g]]=((phi_g+t(phi_g))/2); # enforce perfect symmetry
         }
-        Output[[nclust]]$invariant.loadings=Output[[nclust]]$invariant.loadings%*%sqrtFscale # compensate for (re)scaling of factors in the loadings
+        Output[[ind_nclust]]$invariant.loadings=Output[[ind_nclust]]$invariant.loadings%*%sqrtFscale # compensate for (re)scaling of factors in the loadings
         if(is.element("intercepts",cluster.spec)){
           for(g in 1:ngroup){ # transform the factor means accordingly
             for(k in 1:nclust){
-              Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]=Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]%*%invsqrtFscale
+              Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]=Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]%*%invsqrtFscale
             }
           }
         } else {
           for(g in 1:ngroup){ # transform the factor means accordingly
-            Output[[nclust]]$groupspecific.factormeans[[g]]=Output[[nclust]]$groupspecific.factormeans[[g]]%*%invsqrtFscale
+            Output[[ind_nclust]]$groupspecific.factormeans[[g]]=Output[[ind_nclust]]$groupspecific.factormeans[[g]]%*%invsqrtFscale
           }
         }
       }
@@ -251,13 +251,13 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
         for(k in 1:nclust){
           if(rotation!=0){
             if(rotation=="varimax"){
-              rot<-GPForth(Output[[nclust]]$clusterspecific.loadings[[k]], method="varimax")
+              rot<-GPForth(Output[[ind_nclust]]$clusterspecific.loadings[[k]], method="varimax")
             } else if(rotation=="oblimin"){
-              rot<-GPFoblq(Output[[nclust]]$clusterspecific.loadings[[k]], method="oblimin")
+              rot<-GPFoblq(Output[[ind_nclust]]$clusterspecific.loadings[[k]], method="oblimin")
             } else if(rotation=="geomin"){
-              rot<-GPFoblq(Output[[nclust]]$clusterspecific.loadings[[k]], method="geomin")
+              rot<-GPFoblq(Output[[ind_nclust]]$clusterspecific.loadings[[k]], method="geomin")
             } else if(rotation=="target"){
-              rot<-GPFoblq(Output[[nclust]]$clusterspecific.loadings[[k]], method="pst",methodArgs =list(W=targetW,Target=targetT))
+              rot<-GPFoblq(Output[[ind_nclust]]$clusterspecific.loadings[[k]], method="pst",methodArgs =list(W=targetW,Target=targetT))
             }
             rotatedloadings=rot$loadings
             nvar=nrow(rotatedloadings)
@@ -316,7 +316,7 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
               # refl en rm?
             }
           } else {
-            rotatedloadings=Output[[nclust]]$clusterspecific.loadings[[k]]
+            rotatedloadings=Output[[ind_nclust]]$clusterspecific.loadings[[k]]
             refl=matrix(1,nrow=1,ncol=nfactors)
             Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
             invT=diag(nfactors)
@@ -353,12 +353,12 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
             invsqrtFscale=diag(markload)
             rotatedloadings=rotatedloadings%*%sqrtFscale
           }
-          Output[[nclust]]$clusterspecific.loadings[[k]]=rotatedloadings
+          Output[[ind_nclust]]$clusterspecific.loadings[[k]]=rotatedloadings
 
           if(is.element("intercepts",cluster.spec)){ # factor means also need to be counterrotated/rescaled
             for(g in 1:ngroup){ # counter-rotate all sets of factor (co)variances and factor means
-              crotatedFcov=invT%*%Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]%*%t(invT)
-              crotatedFmeans=Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]%*%t(invT)
+              crotatedFcov=invT%*%Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]%*%t(invT)
+              crotatedFmeans=Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]%*%t(invT)
               if(k>1 && rotation!="target" && rotation!=0){
                 crotatedFcov=crotatedFcov[perm,perm]
                 crotatedFmeans=crotatedFmeans[,perm]
@@ -371,12 +371,12 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
                 crotatedFcov=invsqrtFscale%*%crotatedFcov%*%invsqrtFscale
                 crotatedFmeans=crotatedFmeans%*%invsqrtFscale
               }
-              Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]=crotatedFcov
-              Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]=crotatedFmeans
+              Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]=crotatedFcov
+              Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]=crotatedFmeans
             }
           } else {
             for(g in 1:ngroup){ # counter-rotate all corresponding sets of factor (co)variances
-              crotatedFcov=invT%*%Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]%*%t(invT)
+              crotatedFcov=invT%*%Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]%*%t(invT)
               if(k>1 && rotation!="target" && rotation!=0){
                 crotatedFcov=crotatedFcov[perm,perm]
               }
@@ -386,14 +386,14 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
               if(rescale==1){
                 crotatedFcov=invsqrtFscale%*%crotatedFcov%*%invsqrtFscale
               }
-              Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]=crotatedFcov
+              Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]=crotatedFcov
             }
           }
         }
       }
       if(EFA==0 || nfactors==1 || (rotation=="target" & sum(targetT==0 & targetW==1)==sum(targetW))){ # in case of CFA or zero-approximating target rotation, only reflect
         for(k in 1:nclust){
-          loadings=Output[[nclust]]$clusterspecific.loadings[[k]]
+          loadings=Output[[ind_nclust]]$clusterspecific.loadings[[k]]
           nvar=nrow(loadings)
           if(k==1){ # reflect to have positive strong loadings
             if(rotation=="target"){
@@ -429,22 +429,22 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
             invsqrtFscale=diag(markload)
             reflloadings=reflloadings%*%sqrtFscale
           }
-          Output[[nclust]]$clusterspecific.loadings[[k]]=reflloadings
+          Output[[ind_nclust]]$clusterspecific.loadings[[k]]=reflloadings
           Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
           for(g in 1:ngroup){ # reflect all corresponding sets of factor (co)variances
-            Fcov=Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]
+            Fcov=Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]
             Fcov=Rm*Fcov*t(Rm)
             if(rescale==1 && EFA==0){
               Fcov=invsqrtFscale%*%Fcov%*%invsqrtFscale
             }
-            Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]=Fcov
+            Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]]=Fcov
             if(is.element("intercepts",cluster.spec)){ # factor means also need to be counterrotated/rescaled
-              Fmeans=Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]
+              Fmeans=Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]
               Fmeans=refl*Fmeans
               if(rescale==1 && EFA==0){
                 Fmeans=Fmeans%*%invsqrtFscale
               }
-              Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]=Fmeans
+              Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]=Fmeans
             }
           }
         }
@@ -454,12 +454,12 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
       suffix=seq(1,nfactors)
       factorlabels=noquote(paste(prefix,suffix,sep="_"))
       for(k in 1:nclust){
-        colnames(Output[[nclust]]$clusterspecific.loadings[[k]])<-factorlabels
+        colnames(Output[[ind_nclust]]$clusterspecific.loadings[[k]])<-factorlabels
         for(g in 1:ngroup){
-          colnames(Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]])<-factorlabels
-          rownames(Output[[nclust]]$group.and.clusterspecific.factorcovariances[[g,k]])<-factorlabels
+          colnames(Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]])<-factorlabels
+          rownames(Output[[ind_nclust]]$group.and.clusterspecific.factorcovariances[[g,k]])<-factorlabels
           if(is.element("intercepts",cluster.spec)){
-            colnames(Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]])<-factorlabels
+            colnames(Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]])<-factorlabels
           }
         }
       }
@@ -468,13 +468,13 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
       if(sum(design)==0){
         if(rotation!=0){
           if(rotation=="varimax"){
-            rot<-GPForth(Output[[nclust]]$invariant.loadings, method="varimax")
+            rot<-GPForth(Output[[ind_nclust]]$invariant.loadings, method="varimax")
           } else if(rotation=="oblimin"){
-            rot<-GPFoblq(Output[[nclust]]$invariant.loadings, method="oblimin")
+            rot<-GPFoblq(Output[[ind_nclust]]$invariant.loadings, method="oblimin")
           } else if(rotation=="geomin"){
-            rot<-GPFoblq(Output[[nclust]]$invariant.loadings, method="geomin")
+            rot<-GPFoblq(Output[[ind_nclust]]$invariant.loadings, method="geomin")
           } else if(rotation=="target"){
-            rot<-GPFoblq(Output[[nclust]]$invariant.loadings, method="pst",methodArgs =list(W=targetW,Target=targetT))
+            rot<-GPFoblq(Output[[ind_nclust]]$invariant.loadings, method="pst",methodArgs =list(W=targetW,Target=targetT))
           }
           rotatedloadings=rot$loadings
           nvar=nrow(rotatedloadings)
@@ -497,7 +497,7 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
             refl=matrix(1,nrow=1,ncol=nfactors)
           }
         } else {
-          rotatedloadings=Output[[nclust]]$invariant.loadings
+          rotatedloadings=Output[[ind_nclust]]$invariant.loadings
           refl=matrix(1,nrow=1,ncol=nfactors)
           invT=diag(nfactors)
         }
@@ -531,42 +531,42 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
           invsqrtFscale=diag(markload)
           rotatedloadings=rotatedloadings%*%sqrtFscale
         }
-        Output[[nclust]]$invariant.loadings=rotatedloadings
+        Output[[ind_nclust]]$invariant.loadings=rotatedloadings
 
         if(is.element("intercepts",cluster.spec)){ # intercepts are cluster-specific, so factor means are group-and-cluster-specific
           for(g in 1:ngroup){ # counter-rotate all sets of factor (co)variances and factor means
-            crotatedFcov=invT%*%Output[[nclust]]$groupspecific.factorcovariances[[g]]%*%t(invT)
+            crotatedFcov=invT%*%Output[[ind_nclust]]$groupspecific.factorcovariances[[g]]%*%t(invT)
             crotatedFcov=Rm*crotatedFcov*t(Rm)
             if(rescale==1){
               crotatedFcov=invsqrtFscale%*%crotatedFcov%*%invsqrtFscale
             }
-            Output[[nclust]]$groupspecific.factorcovariances[[g]]=crotatedFcov
+            Output[[ind_nclust]]$groupspecific.factorcovariances[[g]]=crotatedFcov
             for(k in 1:nclust){
-              crotatedFmeans=Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]%*%t(invT)
+              crotatedFmeans=Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]%*%t(invT)
               crotatedFmeans=refl*crotatedFmeans
               if(rescale==1){
                 crotatedFmeans=crotatedFmeans%*%invsqrtFscale
               }
-              Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]=crotatedFmeans
+              Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]=crotatedFmeans
             }
           }
         } else { # intercepts are invariant, so factor means are group-specific
           for(g in 1:ngroup){ # counter-rotate all sets of factor (co)variances and factor means
-            crotatedFcov=invT%*%Output[[nclust]]$groupspecific.factorcovariances[[g]]%*%t(invT)
-            crotatedFmeans=Output[[nclust]]$groupspecific.factormeans[[g]]%*%t(invT)
+            crotatedFcov=invT%*%Output[[ind_nclust]]$groupspecific.factorcovariances[[g]]%*%t(invT)
+            crotatedFmeans=Output[[ind_nclust]]$groupspecific.factormeans[[g]]%*%t(invT)
             crotatedFcov=Rm*crotatedFcov*t(Rm)
             crotatedFmeans=refl*crotatedFmeans
             if(rescale==1){
               crotatedFcov=invsqrtFscale%*%crotatedFcov%*%invsqrtFscale
               crotatedFmeans=crotatedFmeans%*%invsqrtFscale
             }
-            Output[[nclust]]$groupspecific.factorcovariances[[g]]=crotatedFcov
-            Output[[nclust]]$groupspecific.factormeans[[g]]=crotatedFmeans
+            Output[[ind_nclust]]$groupspecific.factorcovariances[[g]]=crotatedFcov
+            Output[[ind_nclust]]$groupspecific.factormeans[[g]]=crotatedFmeans
           }
         }
       }
       if(sum(design)>0 || nfactors==1){ # in case of CFA, only reflect
-        loadings=Output[[nclust]]$invariant.loadings
+        loadings=Output[[ind_nclust]]$invariant.loadings
         nvar=nrow(loadings)
         strongload=loadings # for CFA, all non-zero loadings are considered strong loadings
         toreflect=colSums(strongload>0)<colSums(strongload<0)
@@ -580,29 +580,29 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
           invsqrtFscale=diag(markload)
           reflloadings=reflloadings%*%sqrtFscale
         }
-        Output[[nclust]]$invariant.loadings=reflloadings
+        Output[[ind_nclust]]$invariant.loadings=reflloadings
 
         Rm=matrix(refl,nrow=nfactors,ncol=nfactors,byrow=TRUE)
         for(g in 1:ngroup){ # reflect all corresponding sets of factor (co)variances and factor means
-          Fcov=Output[[nclust]]$groupspecific.factorcovariances[[g]]
+          Fcov=Output[[ind_nclust]]$groupspecific.factorcovariances[[g]]
           Fcov=Rm*Fcov*t(Rm)
           if(rescale==1){
             Fcov=invsqrtFscale%*%Fcov%*%invsqrtFscale
           }
-          Output[[nclust]]$groupspecific.factorcovariances[[g]]=Fcov
+          Output[[ind_nclust]]$groupspecific.factorcovariances[[g]]=Fcov
           if(is.element("intercepts",cluster.spec)){
             for(k in 1:nclust){
-              Fmeans=Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]
+              Fmeans=Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]
               Fmeans=refl*Fmeans
               if(rescale==1){
                 Fmeans=Fmeans%*%invsqrtFscale
               }
-              Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]]=Fmeans
+              Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]]=Fmeans
             }
           } else {
-            Fmeans=Output[[nclust]]$groupspecific.factormeans[[g]]
+            Fmeans=Output[[ind_nclust]]$groupspecific.factormeans[[g]]
             Fmeans=refl*Fmeans
-            Output[[nclust]]$groupspecific.factormeans[[g]]=Fmeans
+            Output[[ind_nclust]]$groupspecific.factormeans[[g]]=Fmeans
           }
         }
       }
@@ -610,16 +610,16 @@ ScaleRotateMixmgfa <- function(OutputObject,N_gs,cluster.spec,nsclust=c(),design
       prefix="Factor"
       suffix=seq(1,nfactors)
       factorlabels=noquote(paste(prefix,suffix,sep="_"))
-      colnames(Output[[nclust]]$invariant.loadings)<-factorlabels
+      colnames(Output[[ind_nclust]]$invariant.loadings)<-factorlabels
       for(g in 1:ngroup){
-        colnames(Output[[nclust]]$groupspecific.factorcovariances[[g]])<-factorlabels
-        rownames(Output[[nclust]]$groupspecific.factorcovariances[[g]])<-factorlabels
+        colnames(Output[[ind_nclust]]$groupspecific.factorcovariances[[g]])<-factorlabels
+        rownames(Output[[ind_nclust]]$groupspecific.factorcovariances[[g]])<-factorlabels
         if(is.element("intercepts",cluster.spec)){
           for(k in 1:nclust){
-            colnames(Output[[nclust]]$group.and.clusterspecific.factormeans[[g,k]])<-factorlabels
+            colnames(Output[[ind_nclust]]$group.and.clusterspecific.factormeans[[g,k]])<-factorlabels
           }
         } else {
-          colnames(Output[[nclust]]$groupspecific.factormeans[[g]])<-factorlabels
+          colnames(Output[[ind_nclust]]$groupspecific.factormeans[[g]])<-factorlabels
         }
       }
     }
