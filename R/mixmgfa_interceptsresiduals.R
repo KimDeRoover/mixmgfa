@@ -994,7 +994,7 @@ mixmgfa_interceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,design,N
           Psi_k=Psi_ks[[k]]
           S_gk=S_gks[[g,k]]
           beta_gk=Beta_gks[[g,k]]
-          if(EFA==1){
+          if(nfactors_j<nfactors){
             beta_gk=beta_gk[d_j, ,drop=FALSE]
           }
           theta_gk=Theta_gks[[g,k]]
