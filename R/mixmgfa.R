@@ -233,7 +233,7 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     if (is.list(mean_gs)){ # list of mean vectors should be turned into a matrix
       mean_gs=matrix(unlist(mean_gs),ncol=nvar,nrow=ngroup,byrow = TRUE)
     } else {
-      mean_gs=matrix(mean_gs,ncol=nvar,nrow=ngroup,byrow = TRUE)
+      mean_gs=matrix(mean_gs,ncol=nvar,nrow=ngroup)
     }
     # if(length(cluster.spec)==1 && cluster.spec[1]=="loadings"){
     #   data2=obsS_gs
@@ -532,3 +532,4 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     cat("\n")
   }
 }
+
