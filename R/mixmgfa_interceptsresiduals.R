@@ -99,7 +99,7 @@ mixmgfa_interceptsresiduals <- function(data,N_gs,nclust,nfactors=1,maxiter = 50
     if (is.list(mean_gs)){ # list of mean vectors should be turned into a matrix
       mean_gs=matrix(unlist(mean_gs),ncol=nvar,nrow=ngroup,byrow = TRUE)
     } else {
-      mean_gs=matrix(mean_gs,ncol=nvar,nrow=ngroup,byrow = TRUE)
+      mean_gs=matrix(mean_gs,ncol=nvar,nrow=ngroup)
     }
 
     # compute group-specific mean cross-products
@@ -1131,4 +1131,5 @@ stirlingnr2 <- function(n,k){
 
   return(S)
 }
+
 
