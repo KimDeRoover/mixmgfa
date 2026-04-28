@@ -203,7 +203,7 @@ mixmgfa_residuals <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start =
             } else {
               tLambda=t(Lambda)
               S_g=obsS_gs[[g]]
-              tLambdaS_g=tLambda%*%S_g
+              tLambdaS_g=tLambda%*%solve(S_g)
               alpha_gs[[g]]=(mean_gs[g,]-tau)%*%t(solve(((tLambdaS_g)%*%Lambda),(tLambdaS_g)))
             }
           }
@@ -417,7 +417,7 @@ mixmgfa_residuals <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start =
       } else {
         tLambda=t(Lambda)
         S_g=obsS_gs[[g]]
-        tLambdaS_g=tLambda%*%S_g
+        tLambdaS_g=tLambda%*%solve(S_g)
         alpha_gs[[g]]=(mean_gs[g,]-tau)%*%t(solve(((tLambdaS_g)%*%Lambda),(tLambdaS_g)))
       }
     }
