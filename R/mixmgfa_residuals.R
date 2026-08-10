@@ -829,10 +829,10 @@ mixmgfa_residuals <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start =
 
 
   if(EFA==1){
-    nrpars=nclust-1+(nvar*nfactors-(nfactors*(nfactors-1)*(1/2)))+(nfactors*(nfactors+1)/2)*(ngroup-1)+nvar+nfactors*ngroup-1+nvar*nclust-nractivatedconstraints;
+    nrpars=nclust-1+(nvar*nfactors-(nfactors*(nfactors-1)*(1/2)))+(nfactors*(nfactors+1)/2)*(ngroup-1)+nvar+nfactors*(ngroup-1)+nvar*nclust-nractivatedconstraints;
   }
   else {
-    nrpars=nclust-1+sum(design)+(nfactors*(nfactors+1)/2)*ngroup-nfactors+nvar+nfactors*ngroup-1+nvar*nclust-nractivatedconstraints;
+    nrpars=nclust-1+sum(design)+(nfactors*(nfactors+1)/2)*ngroup-nfactors+nvar+nfactors*(ngroup-1)+nvar*nclust-nractivatedconstraints;
   }
 
 
