@@ -96,7 +96,7 @@ mixmgfa_intercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start 
       nvar=ncol(obsS_gs)
       obsS_gslist <- matrix(list(NA),nrow = ngroup, ncol = 1)
       for(g in 1:ngroup){
-        obsS_gslist[[g]] <- obsS_gs[nvar*(g-1)+1:nvar*g,]
+        obsS_gslist[[g]] <- obsS_gs[(nvar*(g-1)+1):(nvar*g),]
       }
       obsS_gs=obsS_gslist
     } else { # input is a list of (1) a list of covariance matrices and (2) a list of mean vectors
@@ -1077,6 +1077,17 @@ mixmgfa_intercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactors,design
   ngroup <- length(N_gs)
   N_ks=colSums(N_gks)
 
+  # Model-implied means at the parameters that defined the E-step. The
+  # posterior moments (S_gk, Beta, Theta, meanexpEta) were formed around them;
+  # the exact loading and unique-variance updates below need them once tau
+  # and alpha have been updated.
+  mu_estep_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+  for(g in 1:ngroup){
+    for(k in 1:nclust){
+      mu_estep_gks[[g,k]] <- tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda)
+    }
+  }
+
   if(sum(design)==nvar*nfactors){ # if design contains only '1's, EFA is used
     EFA=1
   } else {
@@ -1142,8 +1153,9 @@ mixmgfa_intercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactors,design
           alpha_gk=alpha_gk[d_j]
           meanexpeta_gk=meanexpeta_gk[d_j]
           #talpha_gk=t(alpha_gk)
-          sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j,j])*(theta_gk+tcrossprod(alpha_gk+meanexpeta_gk,alpha_gk))
-          summeansalpha=summeansalpha+(N_gks[g,k]/psi_g[j,j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
+          # exact moments of (alpha + eta): add alpha'meanexpeta and (mu_estep - tau)'meanexpeta
+          sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j,j])*(theta_gk+tcrossprod(alpha_gk+meanexpeta_gk,alpha_gk)+tcrossprod(alpha_gk,meanexpeta_gk))
+          summeansalpha=summeansalpha+(N_gks[g,k]/psi_g[j,j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk+(mu_estep_gks[[g,k]][j]-tau_ks[k,j])*meanexpeta_gk)
         }
       }
     }
@@ -1162,7 +1174,18 @@ mixmgfa_intercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactors,design
     beta_g=Beta_gs[[g]]
     theta_g=Theta_gs[[g]]
     twoSbetaB_BthetaB=Lambda%*%(2*beta_g%*%S_g-theta_g%*%tLambda) # modelimplied reduced covariance matrix on sample level, based on old structure matrix and sigma_gk, weighting based on new z_gks
-    psi_g=diag(diag(S_g-twoSbetaB_BthetaB))
+    # S_g, Beta and Theta are centered at the E-step means; replace those
+    # mean residuals by the ones at the updated tau, alpha and Lambda
+    summeancorrection=0
+    for(k in 1:nclust){
+      if(N_gks[g,k]>0){
+        lambda_e=tcrossprod(meanexpEta_gks[[g,k]],Lambda)
+        r_new=tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda)-mean_gs[g,]+lambda_e
+        r_old=mu_estep_gks[[g,k]]-mean_gs[g,]+lambda_e
+        summeancorrection=summeancorrection+(N_gks[g,k]/N_gs[g])*as.vector(r_new^2-r_old^2)
+      }
+    }
+    psi_g=diag(diag(S_g-twoSbetaB_BthetaB)+summeancorrection)
     if (sum(diag(psi_g)<.0001)>0){ # track "heywood" cases
       ind=diag(psi_g)<.0001
       d=diag(psi_g);

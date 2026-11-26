@@ -94,7 +94,7 @@ mixmgfa_loadingsresiduals <- function(data,N_gs,nclust,nfactors,maxiter = 5000,s
       nvar=ncol(data)
       S_gs <- matrix(list(NA),nrow = ngroup, ncol = 1)
       for(g in 1:ngroup){
-        S_gs[[g]] <- data[nvar*(g-1)+1:nvar*g,]
+        S_gs[[g]] <- data[(nvar*(g-1)+1):(nvar*g),]
       }
       mu_gs=matrix(0,ngroup,nvar)
     }

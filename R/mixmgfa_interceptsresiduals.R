@@ -90,7 +90,7 @@ mixmgfa_interceptsresiduals <- function(data,N_gs,nclust,nfactors=1,maxiter = 50
       nvar=ncol(obsS_gs)
       obsS_gslist <- matrix(list(NA),nrow = ngroup, ncol = 1)
       for(g in 1:ngroup){
-        obsS_gslist[[g]] <- obsS_gs[nvar*(g-1)+1:nvar*g,]
+        obsS_gslist[[g]] <- obsS_gs[(nvar*(g-1)+1):(nvar*g),]
       }
       obsS_gs=obsS_gslist
     } else { # input is a list of (1) a list of covariance matrices and (2) a list of mean vectors
@@ -939,6 +939,17 @@ mixmgfa_interceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,design,N
   ngroup <- length(N_gs)
   N_ks=colSums(N_gks)
 
+  # Model-implied means at the parameters that defined the E-step. The
+  # posterior moments (S_gk, Beta, Theta, meanexpEta) were formed around them;
+  # the exact loading and unique-variance updates below need them once tau
+  # and alpha have been updated.
+  mu_estep_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+  for(g in 1:ngroup){
+    for(k in 1:nclust){
+      mu_estep_gks[[g,k]] <- tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda)
+    }
+  }
+
   if(sum(design)==nvar*nfactors){ # if design contains only '1's, EFA is used
     EFA=1
   } else {
@@ -1005,8 +1016,9 @@ mixmgfa_interceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,design,N
           meanexpeta_gk=meanexpeta_gk[d_j]
           talpha_gk=t(alpha_gk)
           sumSbeta=sumSbeta+(N_gks[g,k]/Psi_k[j,j])*S_gk[j,]%*%t(beta_gk)
-          sumthetaalpha=sumthetaalpha+(N_gks[g,k]/Psi_k[j,j])*(theta_gk+(alpha_gk+meanexpeta_gk)%*%talpha_gk)
-          summeansalpha=summeansalpha+(N_gks[g,k]/Psi_k[j,j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
+          # exact moments of (alpha + eta): add alpha'meanexpeta and (mu_estep - tau)'meanexpeta
+          sumthetaalpha=sumthetaalpha+(N_gks[g,k]/Psi_k[j,j])*(theta_gk+(alpha_gk+meanexpeta_gk)%*%talpha_gk+tcrossprod(alpha_gk,meanexpeta_gk))
+          summeansalpha=summeansalpha+(N_gks[g,k]/Psi_k[j,j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk+(mu_estep_gks[[g,k]][j]-tau_ks[k,j])*meanexpeta_gk)
         }
       }
     }
@@ -1025,6 +1037,12 @@ mixmgfa_interceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,design,N
           beta_gk=Beta_gks[[g,k]]
           theta_gk=Theta_gks[[g,k]]
           sumS_2SbetaB_BthetaB=sumS_2SbetaB_BthetaB+(N_gks[g,k]/N_ks[k])*(S_gk-Lambda%*%(2*beta_gk%*%S_gk-theta_gk%*%tLambda))
+          # S_gk, Beta and Theta are centered at the E-step mean; replace that
+          # mean residual by the one at the updated tau, alpha and Lambda
+          lambda_e=tcrossprod(meanexpEta_gks[[g,k]],Lambda)
+          r_new=tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda)-mean_gs[g,]+lambda_e
+          r_old=mu_estep_gks[[g,k]]-mean_gs[g,]+lambda_e
+          sumS_2SbetaB_BthetaB=sumS_2SbetaB_BthetaB+(N_gks[g,k]/N_ks[k])*(crossprod(r_new)-crossprod(r_old))
         }
       }
       Psi_k=diag(diag(sumS_2SbetaB_BthetaB))
