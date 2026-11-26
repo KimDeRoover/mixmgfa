@@ -209,6 +209,7 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
     if (is.null(N_gs)){
       stop("WARNING: You seem to have used covariances and means as input, without specifying the vector of group-specific sample sizes N_gs.")
     }
+    ngroup <- length(N_gs)
     grouplabels=rownames(N_gs)
     obsS_gs=data$covariances
     mean_gs=data$means
@@ -217,7 +218,7 @@ mixmgfa <- function(data,N_gs=c(),nfactors=1, cluster.spec = c("loadings","inter
       varlabels=colnames(obsS_gs)
       obsS_gslist <- matrix(list(NA),nrow = ngroup, ncol = 1)
       for(g in 1:ngroup){
-        obsS_gslist[[g]] <- obsS_gs[nvar*(g-1)+1:nvar*g,]
+        obsS_gslist[[g]] <- obsS_gs[(nvar*(g-1)+1):(nvar*g),]
       }
       obsS_gs=obsS_gslist
     } else {

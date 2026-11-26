@@ -91,7 +91,7 @@ mixmgfa_residuals <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start =
       nvar=ncol(obsS_gs)
       obsS_gslist <- matrix(list(NA),nrow = ngroup, ncol = 1)
       for(g in 1:ngroup){
-        obsS_gslist[[g]] <- obsS_gs[nvar*(g-1)+1:nvar*g,]
+        obsS_gslist[[g]] <- obsS_gs[(nvar*(g-1)+1):(nvar*g),]
       }
       obsS_gs=obsS_gslist
     } else { # input is a list of (1) a list of covariance matrices and (2) a list of mean vectors
@@ -100,7 +100,7 @@ mixmgfa_residuals <- function(data,N_gs,nclust,nfactors=1,maxiter = 5000,start =
     if (is.list(mean_gs)){ # list of mean vectors should be turned into a matrix
       mean_gs=matrix(unlist(mean_gs),ncol=nvar,nrow=ngroup,byrow = TRUE)
     } else {
-      mean_gs=matrix(mean_gs,ncol=nvar,nrow=ngroup,byrow = TRUE)
+      mean_gs=matrix(mean_gs,ncol=nvar,nrow=ngroup)
     }
 
     # compute group-specific mean cross-products
@@ -875,6 +875,15 @@ mixmgfa_residuals_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,
   ngroup <- length(N_gs)
   N_ks=colSums(N_gks)
 
+  # Model-implied means at the parameters that defined the E-step. The
+  # posterior moments (S_g, Beta, Theta, meanexpEta) were formed around them;
+  # the exact loading and unique-variance updates below need them once tau
+  # and alpha have been updated.
+  mu_estep_gs <- matrix(list(NA), nrow = ngroup, ncol = 1)
+  for(g in 1:ngroup){
+    mu_estep_gs[[g]] <- tau+tcrossprod(alpha_gs[[g]],Lambda)
+  }
+
   if(sum(design)==nvar*nfactors){ # if design contains only '1's, EFA is used
     EFA=1
   } else {
@@ -947,8 +956,9 @@ mixmgfa_residuals_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,
           meanexpeta_gk=meanexpEta_gks[[g,k]]
           meanexpeta_gk=meanexpeta_gk[d_j]
           sumSbeta=sumSbeta+(N_gks[g,k]/Psi_k[j,j])*S_g[j,]%*%t(beta_gk)
-          sumthetaalpha=sumthetaalpha+(N_gks[g,k]/Psi_k[j,j])*(theta_gk+(alpha_g+meanexpeta_gk)%*%talpha_g)
-          summeansalpha=summeansalpha+(N_gks[g,k]/Psi_k[j,j])*mean_tau_alpha_g
+          # exact moments of (alpha + eta): add alpha'meanexpeta and (mu_estep - tau)'meanexpeta
+          sumthetaalpha=sumthetaalpha+(N_gks[g,k]/Psi_k[j,j])*(theta_gk+(alpha_g+meanexpeta_gk)%*%talpha_g+tcrossprod(alpha_g,meanexpeta_gk))
+          summeansalpha=summeansalpha+(N_gks[g,k]/Psi_k[j,j])*(mean_tau_alpha_g+(mu_estep_gs[[g]][j]-tau_j)*meanexpeta_gk)
         }
       }
     }
@@ -968,6 +978,12 @@ mixmgfa_residuals_Mstep <- function(S_gs,N_gs,nvar,nclust,nfactors,design,N_gks,
           beta_gk=Beta_gks[[g,k]]
           theta_gk=Theta_gks[[g,k]]
           sumS_2SbetaB_BthetaB=sumS_2SbetaB_BthetaB+(N_gks[g,k]/N_ks[k])*(S_g-Lambda%*%(2*beta_gk%*%S_g-theta_gk%*%tLambda))
+          # S_g, Beta and Theta are centered at the E-step mean; replace that
+          # mean residual by the one at the updated tau, alpha and Lambda
+          lambda_e=tcrossprod(meanexpEta_gks[[g,k]],Lambda)
+          r_new=tau+tcrossprod(alpha_gs[[g]],Lambda)-mean_gs[g,]+lambda_e
+          r_old=mu_estep_gs[[g]]-mean_gs[g,]+lambda_e
+          sumS_2SbetaB_BthetaB=sumS_2SbetaB_BthetaB+(N_gks[g,k]/N_ks[k])*(crossprod(r_new)-crossprod(r_old))
         }
       }
       Psi_k=diag(diag(sumS_2SbetaB_BthetaB))

@@ -90,7 +90,7 @@ mixmgfa_loadingsintercepts <- function(data,N_gs,nclust,nfactors=1,maxiter = 500
       nvar=ncol(obsS_gs)
       obsS_gslist <- matrix(list(NA),nrow = ngroup, ncol = 1)
       for(g in 1:ngroup){
-        obsS_gslist[[g]] <- obsS_gs[nvar*(g-1)+1:nvar*g,]
+        obsS_gslist[[g]] <- obsS_gs[(nvar*(g-1)+1):(nvar*g),]
       }
       obsS_gs=obsS_gslist
     } else { # input is a list of (1) a list of covariance matrices and (2) a list of mean vectors
@@ -1031,6 +1031,17 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
   ngroup <- length(N_gs)
   N_ks=colSums(N_gks)
 
+  # Model-implied means at the parameters that defined the E-step. The
+  # posterior moments (S_gk, Beta, Theta, meanexpEta) were formed around them;
+  # the exact loading and unique-variance updates below need them once tau
+  # and alpha have been updated.
+  mu_estep_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+  for(g in 1:ngroup){
+    for(k in 1:nclust){
+      mu_estep_gks[[g,k]] <- tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda_ks[[k]])
+    }
+  }
+
   if(sum(design)==nvar*nfactors){ # if design contains only '1's, EFA is used
     EFA=1
   } else {
@@ -1095,8 +1106,9 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
             #talpha_gk=t(alpha_gk)
             N_gks_psi_g=N_gks[g,k]/diag(psi_g)
             S_gktbeta_gk=tcrossprod(S_gk,beta_gk)
-            theta_gk_latmeanscp=theta_gk+crossprod(alpha_gk+meanexpeta_gk,alpha_gk)
-            meansalpha=((mean_gs[g,]-tau_ks[k,])%*%alpha_gk)
+            # exact moments of (alpha + eta): add alpha'meanexpeta and (mu_estep - tau)'meanexpeta
+            theta_gk_latmeanscp=theta_gk+crossprod(alpha_gk+meanexpeta_gk,alpha_gk)+crossprod(alpha_gk,meanexpeta_gk)
+            meansalpha=((mean_gs[g,]-tau_ks[k,])%*%alpha_gk)+crossprod(mu_estep_gks[[g,k]]-tau_ks[k,],meanexpeta_gk)
             for(j in 1:nvar){
               sumSbetas[[j]]=sumSbetas[[j]]+N_gks_psi_g[j]*S_gktbeta_gk[j, ,drop=FALSE]
               sumthetaalphas[[j]]=sumthetaalphas[[j]]+N_gks_psi_g[j]*theta_gk_latmeanscp
@@ -1182,8 +1194,8 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
               alpha_gk=alpha_gk[indfactors_j]
               meanexpeta_gk=meanexpeta_gk[indfactors_j]
               sumSbeta=sumSbeta+(N_gks[g,k]/psi_g[j])*tcrossprod(S_gk[j,],beta_gk)
-              sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j])*(theta_gk+tcrossprod(alpha_gk+meanexpeta_gk,alpha_gk))
-              summeansalpha=summeansalpha+(N_gks[g,k]/psi_g[j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
+              sumthetaalpha=sumthetaalpha+(N_gks[g,k]/psi_g[j])*(theta_gk+tcrossprod(alpha_gk+meanexpeta_gk,alpha_gk)+tcrossprod(alpha_gk,meanexpeta_gk))
+              summeansalpha=summeansalpha+(N_gks[g,k]/psi_g[j])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk+(mu_estep_gks[[g,k]][j]-tau_ks[k,j])*meanexpeta_gk)
             }
           }
           if(nfactors_j==1){
@@ -1204,17 +1216,24 @@ mixmgfa_loadingsintercepts_Mstep <- function(S_gs,S_gks,N_gs,nvar,nclust,nfactor
   for(g in 1:ngroup){
     S_g=S_gs[[g]]
     sum2SbetaB_BthetaB=0
+    summeancorrection=0
     for(k in 1:nclust){
       if(N_gks[g,k]>0){
         lambda_k=Lambda_ks[[k]]
         beta_gk=Beta_gks[[g,k]]
         theta_gk=Theta_gks[[g,k]]
+        # S_gk, Beta and Theta are centered at the E-step mean; replace that
+        # mean residual by the one at the updated tau, alpha and Lambda
+        lambda_e=tcrossprod(meanexpEta_gks[[g,k]],lambda_k)
+        r_new=tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],lambda_k)-mean_gs[g,]+lambda_e
+        r_old=mu_estep_gks[[g,k]]-mean_gs[g,]+lambda_e
+        summeancorrection=summeancorrection+(N_gks[g,k]/N_gs[g])*as.vector(r_new^2-r_old^2)
 	      S_gk=S_gks[[g,k]]
         #sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*(lambda_k%*%(2*beta_gk%*%S_gk-theta_gk%*%t(lambda_k))) # modelimplied reduced covariance matrix on sample level, based on old structure matrix and sigma_gk, weighting based on new z_gks
         sum2SbetaB_BthetaB=sum2SbetaB_BthetaB+(N_gks[g,k]/N_gs[g])*rowSums(lambda_k*(2*tcrossprod(S_gk,beta_gk)-lambda_k%*%theta_gk)) # faster way (result = vector), only works when no residual covariances!
       }
     }
-    psi_g=diag(S_g)-sum2SbetaB_BthetaB # diag(diag(S_g-sum2SbetaB_BthetaB))
+    psi_g=diag(S_g)-sum2SbetaB_BthetaB+summeancorrection # diag(diag(S_g-sum2SbetaB_BthetaB))
     d=psi_g #diag(psi_g)
     if (sum(d<.0001)>0){ # track "heywood" cases
       ind=d<.0001

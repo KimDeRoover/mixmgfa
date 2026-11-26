@@ -91,7 +91,7 @@ mixmgfa_loadingsinterceptsresiduals <- function(data,N_gs,nclust,nfactors,maxite
       nvar=ncol(obsS_gs)
       obsS_gslist <- matrix(list(NA),nrow = ngroup, ncol = 1)
       for(g in 1:ngroup){
-        obsS_gslist[[g]] <- obsS_gs[nvar*(g-1)+1:nvar*g,]
+        obsS_gslist[[g]] <- obsS_gs[(nvar*(g-1)+1):(nvar*g),]
       }
       obsS_gs=obsS_gslist
     } else { # input is a list of (1) a list of covariance matrices and (2) a list of mean vectors
@@ -903,6 +903,17 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
   ngroup <- length(N_gs)
   N_ks=colSums(N_gks)
 
+  # Model-implied means at the parameters that defined the E-step. The
+  # posterior moments (S_gk, Beta, Theta, meanexpEta) were formed around them;
+  # the exact loading and unique-variance updates below need them once tau
+  # and alpha have been updated.
+  mu_estep_gks <- matrix(list(NA), nrow = ngroup, ncol = nclust)
+  for(g in 1:ngroup){
+    for(k in 1:nclust){
+      mu_estep_gks[[g,k]] <- tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],Lambda_ks[[k]])
+    }
+  }
+
   if(sum(design)==nvar*nfactors){ # if design contains only '1's, EFA is used
     EFA=1
   } else {
@@ -971,8 +982,9 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
             alpha_gk=alpha_gks[[g,k]]
             meanexpeta_gk=meanexpEta_gks[[g,k]]
             sumSbeta=sumSbeta+N_gks[g,k]*tcrossprod(S_gk,beta_gk)
-            sumthetaalpha=sumthetaalpha+N_gks[g,k]*(theta_gk+crossprod(alpha_gk+meanexpeta_gk,alpha_gk))
-            summeansalpha=summeansalpha+N_gks[g,k]*((mean_gs[g,]-tau_ks[k,])%*%alpha_gk)
+            # exact moments of (alpha + eta): add alpha'meanexpeta and (mu_estep - tau)'meanexpeta
+            sumthetaalpha=sumthetaalpha+N_gks[g,k]*(theta_gk+crossprod(alpha_gk+meanexpeta_gk,alpha_gk)+crossprod(alpha_gk,meanexpeta_gk))
+            summeansalpha=summeansalpha+N_gks[g,k]*((mean_gs[g,]-tau_ks[k,])%*%alpha_gk+crossprod(mu_estep_gks[[g,k]]-tau_ks[k,],meanexpeta_gk))
           }
         }
         lambda_k=t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
@@ -1004,8 +1016,8 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
               meanexpeta_gk=meanexpeta_gk[d_j]
               #talpha_gk=t(alpha_gk)
               sumSbeta=sumSbeta+(N_gks[g,k])*S_gk[j,]%*%t(beta_gk)
-              sumthetaalpha=sumthetaalpha+(N_gks[g,k])*(theta_gk+tcrossprod(alpha_gk+meanexpeta_gk,alpha_gk))
-              summeansalpha=summeansalpha+(N_gks[g,k])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk)
+              sumthetaalpha=sumthetaalpha+(N_gks[g,k])*(theta_gk+tcrossprod(alpha_gk+meanexpeta_gk,alpha_gk)+tcrossprod(alpha_gk,meanexpeta_gk))
+              summeansalpha=summeansalpha+(N_gks[g,k])*((mean_gs[g,j]-tau_ks[k,j])%*%alpha_gk+(mu_estep_gks[[g,k]][j]-tau_ks[k,j])*meanexpeta_gk)
             }
           }
           lambda_k[j,design[j,]==1]= t(solve(sumthetaalpha,t(sumSbeta+summeansalpha)))
@@ -1029,6 +1041,12 @@ mixmgfa_loadinterceptsres_Mstep <- function(S_gks,N_gs,nvar,nclust,nfactors,desi
           theta_gk=Theta_gks[[g,k]]
           lambdabetaS=lambda_k%*%beta_gk%*%S_gk
           sumS_2SbetaB_BthetaB=sumS_2SbetaB_BthetaB+(N_gks[g,k]/N_ks[k])*(S_gk-(lambdabetaS+t(lambdabetaS))+lambda_k%*%theta_gk%*%tlambda_k)
+          # S_gk, Beta and Theta are centered at the E-step mean; replace that
+          # mean residual by the one at the updated tau, alpha and Lambda
+          lambda_e=tcrossprod(meanexpEta_gks[[g,k]],lambda_k)
+          r_new=tau_ks[k,]+tcrossprod(alpha_gks[[g,k]],lambda_k)-mean_gs[g,]+lambda_e
+          r_old=mu_estep_gks[[g,k]]-mean_gs[g,]+lambda_e
+          sumS_2SbetaB_BthetaB=sumS_2SbetaB_BthetaB+(N_gks[g,k]/N_ks[k])*(crossprod(r_new)-crossprod(r_old))
         }
       }
       if(sum(rescov)==nvar || max(rescov)==0){
